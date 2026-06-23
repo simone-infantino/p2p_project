@@ -226,7 +226,7 @@ mkdir bt_chain_blocks
 cp -r $HOME/.bitcoin/blocks/* bt_chain_blocks/
 ```
 
-Java Maven project
+Create Java Maven project
 ```shell
 cd project_folder
 mvn archetype:generate \
@@ -234,6 +234,16 @@ mvn archetype:generate \
     -DartifactId=offchain-scanner \
     -DarchetypeArtifactId=maven-archetype-quickstart \
     -DinteractiveMode=false
+```
+
+Create `utxo_snapshot.tsv` snapshot
+```shell
+mvn clean package
+mvn clean compile
+# java com.scanner.UtxoScanner <blocksDir> <outputSnapshot.tsv> [maxBlocks=131000]
+java -jar target/offchain-scanner-1.0-SNAPSHOT-jar-with-dependencies.jar \
+  ~/projects/finalproject/bt_chain_blocks \
+  utxo_snapshot.tsv 131000
 ```
 
 ---

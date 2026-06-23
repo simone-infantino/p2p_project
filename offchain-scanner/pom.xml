@@ -37,7 +37,7 @@
         <configuration>
           <archive>
             <manifest>
-              <mainClass>oracle.UtxoScanner</mainClass>
+              <mainClass>com.scanner.UtxoScanner</mainClass>
             </manifest>
           </archive>
           <descriptorRefs>
@@ -56,5 +56,3 @@
   </build>
 
 </project>
-
-java -jar target/utxo-scanner-1.0-jar-with-dependencies.jar ~/.bitcoin/blocks utxo_snapshot.tsv 131000
