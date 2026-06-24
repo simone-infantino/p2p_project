@@ -6,5 +6,8 @@
     "@types/node": "^22.19.21",
     "hardhat": "^3.9.0",
     "typescript": "~6.0.3"
+  },
+  "dependencies": {
+    "@nomicfoundation/hardhat-toolbox-viem": "^5.0.7"
   }
 }

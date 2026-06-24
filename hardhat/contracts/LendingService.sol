@@ -158,54 +158,74 @@ contract LendingService is ILendingServiceCallback {
     }
     
     function resolveProposal(uint256 id) external notTerminated {
-        Proposal storage p = proposals[id];
-        require(p.applicant == msg.sender, "not applicant");
-        require(!p.closed, "closed");
-        require(block.number > p.startBlock + PROPOSAL_VOTING_PERIOD, "too early");
-        
-        // 1. total disposable check
-        uint256 cumDisposable = 0;
-        uint256 n = contributorList.length;
-        for (uint256 i = 0; i < n; ++i) {
-            cumDisposable += _disposable(contributorList[i]);
-        }
-        if (cumDisposable < p.amount) { p.closed = true; emit ProposalResolved(id, false, address(0)); return; }
-        
-        // 2. Bitcoin liquidity check
-        uint256 sats = oracle.getBalance(p.btcAddress);
-        uint256 ethEquiv = (sats * BTC_ETH_RATE * 1 ether) / SATOSHIS_PER_BTC;
-        if (ethEquiv < p.amount) { p.closed = true; emit ProposalResolved(id, false, address(0)); return; }
-        
-        // 3. weighted vote
-        uint256 approveWeight = 0;
-        uint256 rejectWeight  = 0; // non-voters count toward reject implicitly via cumDisposable
-        for (uint256 i = 0; i < n; ++i) {
-            address c = contributorList[i];
-            uint256 w = _disposable(c);
-            if (p.votes[c] == Vote.Approve) approveWeight += w;
-        }
-        rejectWeight = cumDisposable - approveWeight; // implicit reject for non-voters/explicit rejects
-        if (approveWeight <= rejectWeight) {
-            p.closed = true;
-            emit ProposalResolved(id, false, address(0));
-            return;
-        }
-        
-        // 4. approved -> lock value proportionally, deploy Loan
-        (address[] memory sorted, uint256[] memory amounts, uint256 actualPrincipal)
-            = _lockProportional(p.amount, cumDisposable);
-        
-        Loan loan = (new Loan){value: actualPrincipal}(
-            p.applicant, actualPrincipal, p.interestRate, p.duration,
-            collateralPct, p.btcAddress, sorted, amounts
-        );
-        isActiveLoan[address(loan)] = true;
-        loansByApplicant[p.applicant].push(address(loan));
-        
+    Proposal storage p = proposals[id];
+    require(p.applicant == msg.sender, "not applicant");
+    require(!p.closed, "closed");
+    require(block.number > p.startBlock + PROPOSAL_VOTING_PERIOD, "too early");
+
+    uint256 cumDisposable = _cumulativeDisposable();
+
+    // reject paths: insufficient pool OR failed liquidity check
+    if (cumDisposable < p.amount || !_passesLiquidity(p.btcAddress, p.amount)) {
         p.closed = true;
-        p.approved = true;
-        emit ProposalResolved(id, true, address(loan));
+        emit ProposalResolved(id, false, address(0));
+        return;
     }
+
+    // weighted vote (non-voters count as reject via cumDisposable)
+    uint256 approveWeight = _approveWeight(p);
+    if (approveWeight <= cumDisposable - approveWeight) {
+        p.closed = true;
+        emit ProposalResolved(id, false, address(0));
+        return;
+    }
+
+    // approved
+    address loanAddr = _createLoan(p, cumDisposable);
+    p.closed = true;
+    p.approved = true;
+    emit ProposalResolved(id, true, loanAddr);
+}
+
+function _cumulativeDisposable() internal view returns (uint256 total) {
+    uint256 n = contributorList.length;
+    for (uint256 i = 0; i < n; ++i) {
+        total += _disposable(contributorList[i]);
+    }
+}
+
+function _passesLiquidity(bytes storage btcAddr, uint256 amount)
+    internal view returns (bool)
+{
+    uint256 sats = oracle.getBalance(btcAddr);
+    uint256 ethEquiv = (sats * BTC_ETH_RATE * 1 ether) / SATOSHIS_PER_BTC;
+    return ethEquiv >= amount;
+}
+
+function _approveWeight(Proposal storage p) internal view returns (uint256 weight) {
+    uint256 n = contributorList.length;
+    for (uint256 i = 0; i < n; ++i) {
+        address c = contributorList[i];
+        if (p.votes[c] == Vote.Approve) {
+            weight += _disposable(c);
+        }
+    }
+}
+
+function _createLoan(Proposal storage p, uint256 cumDisposable)
+    internal returns (address)
+{
+    (address[] memory sorted, uint256[] memory amounts, uint256 actualPrincipal)
+        = _lockProportional(p.amount, cumDisposable);
+
+    Loan loan = (new Loan){value: actualPrincipal}(
+        p.applicant, actualPrincipal, p.interestRate, p.duration,
+        collateralPct, p.btcAddress, sorted, amounts
+    );
+    isActiveLoan[address(loan)] = true;
+    loansByApplicant[p.applicant].push(address(loan));
+    return address(loan);
+}
     
     // ============ helpers ============
     
