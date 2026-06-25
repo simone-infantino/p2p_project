@@ -38,36 +38,10 @@ geth --datadir $CHAINDATA_DIR init $GENESIS_FILE
 
 ### Start node (clique)
 ```shell
-geth --datadir $CHAINDATA_DIR \
-  --http \
-  --http.addr $CHAIN_HOST \
-  --http.port $CHAIN_PORT \
-  --http.api eth,net,web3,clique,personal \
-  --allow-insecure-unlock \
-  --unlock $ACCOUNT_PUB_ADDR \
-  --mine
-```
-
-`PROF_COMMAND`
-```shell
-geth --datadir ./data \
-  --networkid 20269 \
-  --unlock 0x9cD353F9E3Cfe91bEE50F50F039ccC5bA10EeecD \
-  --password psw.txt \
-  --mine \
-  --miner.etherbase=0x9cD353F9E3Cfe91bEE50F50F039ccC5bA10EeecD \
-  --allow-insecure-unlock \
-  --http \
-  --http.corsdomain="https://remix.ethereum.org,http://127.0.0.1:8000" \
-  --http.api "web3,eth,debug,personal,net"
-```
-
-`PROF_COMMAND` formatted to use variables and without Remix URL
-```shell
 geth --datadir "${CHAINDATA_DIR}" \
   --networkid "${CHAIN_NET_ID}" \
   --unlock "0x${ACCOUNT_PUB_ADDR}" \
-  --password "/a/keystore/psw-1.txt" \
+  --password "chain/psw.txt" \
   --mine \
   --miner.etherbase="0x${ACCOUNT_PUB_ADDR}" \
   --allow-insecure-unlock \
@@ -104,7 +78,9 @@ eth.blockNumber
     └── project2526genesis.json
 ```
 
-### PrivateEtherExplorer-master
+---
+
+## PrivateEtherExplorer-master
 
 Download and extract
 ```shell
@@ -136,6 +112,7 @@ Create a Python virtual environment and install `web3` library
 python -m venv venv
 source venv/bin/activate # Enter
 pip install web3
+pip list | grep web3 # Check version
 deactivate # Exit
 ```
 
@@ -250,6 +227,24 @@ java -jar target/offchain-scanner-1.0-SNAPSHOT-jar-with-dependencies.jar \
 
 ## Hardhat
 
+### Install or update to latest version
+```
+npm install -g hardhat@latest # system
+npm install --save-dev hardhat@latest # project
+npx hardhat --version
+``
+
+### Create project
+```shell
+npx hardhat --init
+```
+Select Hardhat version 3 and set project path
+
+Select project type: 
+- [*] TypeScript using Node Test Runner and Viem
+- [ ] TypeScript using Mocha and Ethers.js
+- [ ] Minimal
+
 ### Project structure
 ```shell
 hardhat/
@@ -268,6 +263,14 @@ hardhat/
 ├── package.json # for npm libraries
 ├── README.md
 └── tsconfig.json
+```
+
+### Config file
+Edit `hardhat.config.ts` to set local chain
+
+### Plugins
+```shell
+npm install --save-dev @nomicfoundation/hardhat-toolbox-viem
 ```
 
 ### Build
