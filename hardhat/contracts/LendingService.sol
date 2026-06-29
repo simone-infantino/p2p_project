@@ -151,7 +151,7 @@ contract LendingService is ILendingServiceCallback {
     
     // ============ applicant operations ============
     
-    function submitProposal(uint256 amount, uint8 interestRate, uint256 duration, bytes calldata btcAddress) external notTerminated returns (uint256) {
+    function submitProposal(uint256 amount, uint8 interestRate, uint256 duration, bytes calldata btcAddress) external notTerminated returns (uint256 id) {
         require(interestRate >= 1 && interestRate <= 100, "rate out of range");
         require(amount > 0 && duration > 0, "bad params");
         id = nextProposalId++;
@@ -196,7 +196,7 @@ contract LendingService is ILendingServiceCallback {
     emit ProposalResolved(id, true, loanAddr);
 }
 
-function _cumulativeDisposable() internal view returns (uint256) {
+function _cumulativeDisposable() internal view returns (uint256 total) {
     uint256 n = contributorList.length;
     for (uint256 i = 0; i < n; ++i) {
         total += _disposable(contributorList[i]);
@@ -210,7 +210,7 @@ function _passesLiquidity(bytes storage btcAddr, uint256 amount) internal view r
     return ethEquiv >= amount;
 }
 
-function _approveWeight(Proposal storage p) internal view returns (uint256){
+function _approveWeight(Proposal storage p) internal view returns (uint256 weight){
     uint256 n = contributorList.length;
     for (uint256 i = 0; i < n; ++i) {
         address c = contributorList[i];
