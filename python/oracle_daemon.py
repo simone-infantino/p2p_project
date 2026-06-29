@@ -20,18 +20,19 @@ from web3 import Web3
 from eth_account import Account
 
 # ── configuration ─────────────────────────────────────────────────────────────
-RPC          = "http://127.0.0.1:8545"
-ORACLE_ADDR  = Web3.to_checksum_address("0xYOUR_ORACLE_CONTRACT")
-ORACLE_KEY   = "0x..."                       # private key of the oracle owner account
-ABI_PATH     = "artifacts/contracts/BitcoinOracle.sol/BitcoinOracle.json"
-SNAPSHOT     = "utxo_snapshot.tsv"
-STATE_FILE   = "oracle_state.json"           # checkpoint of last processed block
+DEPLOYMENT = json.loads(Path("deployment.json").read_text())
+
+RPC         = DEPLOYMENT["rpc"]
+ORACLE_ADDR = Web3.to_checksum_address(DEPLOYMENT["oracle"]["address"])
+ABI_PATH    = "artifacts/contracts/BitcoinOracle.sol/BitcoinOracle.json"
+SNAPSHOT    = "utxo_snapshot.tsv"
+STATE_FILE  = "oracle_state.json"
 POLL_SECONDS = 2
 
 w3 = Web3(Web3.HTTPProvider(RPC))
 abi = json.loads(Path(ABI_PATH).read_text())["abi"]
 oracle = w3.eth.contract(address=ORACLE_ADDR, abi=abi)
-owner = Account.from_key(ORACLE_KEY)
+owner = Account.from_key(DEPLOYMENT["oracle"]["ownerKey"]) 
 
 # ── load the UTXO snapshot once at startup ─────────────────────────────────────
 balances: dict[str, int] = {}

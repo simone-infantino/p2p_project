@@ -24,6 +24,7 @@ contract LendingService is ILendingServiceCallback {
     mapping(address => uint256) public locked;        // currently locked in active loans
     address[] public contributorList;
     mapping(address => bool) public isContributor;
+    mapping(address => uint256) private contributorIndex;
     uint256 public totalDeposited;
     uint256 public totalLocked;
     
@@ -80,6 +81,7 @@ contract LendingService is ILendingServiceCallback {
         require(msg.value >= MIN_DEPOSIT, "below min deposit");
         if (!isContributor[msg.sender]) {
             isContributor[msg.sender] = true;
+            contributorIndex[msg.sender] = contributorList.length; // index before push
             contributorList.push(msg.sender);
         }
         deposited[msg.sender] += msg.value;
@@ -90,8 +92,15 @@ contract LendingService is ILendingServiceCallback {
     function withdraw(uint256 amount) external notTerminated {
         uint256 disposable = _disposable(msg.sender);
         require(amount <= disposable, "exceeds disposable");
+
         deposited[msg.sender] -= amount;
         totalDeposited -= amount;
+
+        if (deposited[msg.sender] == 0 && locked[msg.sender] == 0) {
+            _removeContributor(msg.sender);
+        }
+
+
         (bool ok, ) = msg.sender.call{value: amount}("");
         require(ok, "transfer failed");
         emit Withdrawn(msg.sender, amount);
@@ -128,6 +137,10 @@ contract LendingService is ILendingServiceCallback {
         totalLocked -= give;
         deposited[msg.sender] -= give;   // they got cash, so reduce their pool balance
         totalDeposited -= give;
+
+        if (deposited[msg.sender] == 0 && locked[msg.sender] == 0) {
+            _removeContributor(msg.sender);
+        }
         
         loan.applyCompensation(msg.sender, give);
         
@@ -138,12 +151,7 @@ contract LendingService is ILendingServiceCallback {
     
     // ============ applicant operations ============
     
-    function submitProposal(
-        uint256 amount,
-        uint8 interestRate,
-        uint256 duration,
-        bytes calldata btcAddress
-    ) external notTerminated returns (uint256 id) {
+    function submitProposal(uint256 amount, uint8 interestRate, uint256 duration, bytes calldata btcAddress) external notTerminated returns (uint256) {
         require(interestRate >= 1 && interestRate <= 100, "rate out of range");
         require(amount > 0 && duration > 0, "bad params");
         id = nextProposalId++;
@@ -155,6 +163,7 @@ contract LendingService is ILendingServiceCallback {
         p.btcAddress   = btcAddress;
         p.startBlock   = block.number;
         emit ProposalSubmitted(id, msg.sender, amount, interestRate, duration, btcAddress);
+        return id;
     }
     
     function resolveProposal(uint256 id) external notTerminated {
@@ -187,22 +196,21 @@ contract LendingService is ILendingServiceCallback {
     emit ProposalResolved(id, true, loanAddr);
 }
 
-function _cumulativeDisposable() internal view returns (uint256 total) {
+function _cumulativeDisposable() internal view returns (uint256) {
     uint256 n = contributorList.length;
     for (uint256 i = 0; i < n; ++i) {
         total += _disposable(contributorList[i]);
     }
+    return total;
 }
 
-function _passesLiquidity(bytes storage btcAddr, uint256 amount)
-    internal view returns (bool)
-{
+function _passesLiquidity(bytes storage btcAddr, uint256 amount) internal view returns (bool){
     uint256 sats = oracle.getBalance(btcAddr);
     uint256 ethEquiv = (sats * BTC_ETH_RATE * 1 ether) / SATOSHIS_PER_BTC;
     return ethEquiv >= amount;
 }
 
-function _approveWeight(Proposal storage p) internal view returns (uint256 weight) {
+function _approveWeight(Proposal storage p) internal view returns (uint256){
     uint256 n = contributorList.length;
     for (uint256 i = 0; i < n; ++i) {
         address c = contributorList[i];
@@ -210,11 +218,10 @@ function _approveWeight(Proposal storage p) internal view returns (uint256 weigh
             weight += _disposable(c);
         }
     }
+    return weight;
 }
 
-function _createLoan(Proposal storage p, uint256 cumDisposable)
-    internal returns (address)
-{
+function _createLoan(Proposal storage p, uint256 cumDisposable) internal returns (address){
     (address[] memory sorted, uint256[] memory amounts, uint256 actualPrincipal)
         = _lockProportional(p.amount, cumDisposable);
 
@@ -233,10 +240,8 @@ function _createLoan(Proposal storage p, uint256 cumDisposable)
         return deposited[c] - locked[c];
     }
     
-    function _lockProportional(uint256 amount, uint256 cumDisposable)
-        internal
-        returns (address[] memory sorted, uint256[] memory amounts, uint256 actualPrincipal)
-    {
+    function _lockProportional(uint256 amount, uint256 cumDisposable) internal
+    returns (address[] memory sorted, uint256[] memory amounts, uint256 actualPrincipal){
         uint256 n = contributorList.length;
         address[] memory active = new address[](n);
         uint256[] memory locks  = new uint256[](n);
@@ -284,6 +289,22 @@ function _createLoan(Proposal storage p, uint256 cumDisposable)
             if (collateralPct < 95) collateralPct += 5;
             else collateralPct = 100;
         }
+    }
+
+
+    function _removeContributor(address who) internal {
+        isContributor[who] = false;
+
+        uint256 idx = contributorIndex[who];
+        uint256 lastIdx = contributorList.length - 1;
+
+        if (idx != lastIdx) {
+            address lastAddr = contributorList[lastIdx];
+            contributorList[idx] = lastAddr;       // move last element into the gap
+            contributorIndex[lastAddr] = idx;      // update the moved element's index
+        }
+        contributorList.pop();                     // drop the now-duplicate tail
+        delete contributorIndex[who];
     }
     
     // ============ callbacks invoked by Loan contracts ============
