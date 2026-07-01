@@ -12,6 +12,7 @@ export default defineConfig({
             enabled: true,
             runs: 200,
           },
+          evmVersion: "paris",
         },
       },
       production: {
