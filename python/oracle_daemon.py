@@ -24,12 +24,15 @@ DEPLOYMENT = json.loads(Path("deployment.json").read_text())
 
 RPC         = DEPLOYMENT["rpc"]
 ORACLE_ADDR = Web3.to_checksum_address(DEPLOYMENT["oracle"]["address"])
-ABI_PATH    = "artifacts/contracts/BitcoinOracle.sol/BitcoinOracle.json"
-SNAPSHOT    = "utxo_snapshot.tsv"
+ABI_PATH    = "hardhat/artifacts/contracts/BitcoinOracle.sol/BitcoinOracle.json"
+SNAPSHOT    = "offchain-scanner/utxo_snapshot.tsv"
 STATE_FILE  = "oracle_state.json"
 POLL_SECONDS = 2
 
 w3 = Web3(Web3.HTTPProvider(RPC))
+from web3.middleware import ExtraDataToPOAMiddleware
+w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+
 abi = json.loads(Path(ABI_PATH).read_text())["abi"]
 oracle = w3.eth.contract(address=ORACLE_ADDR, abi=abi)
 owner = Account.from_key(DEPLOYMENT["oracle"]["ownerKey"]) 

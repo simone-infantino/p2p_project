@@ -23,11 +23,11 @@ from eth_account import Account
 
 # ── configuration ─────────────────────────────────────────────────────────────
 RPC = "http://127.0.0.1:8545"
-ARTIFACTS = Path("artifacts/contracts")
+ARTIFACTS = Path("hardhat/artifacts/contracts")
 OUT = Path("deployment.json")
 
 NUM_CONTRIBUTORS = 3
-NUM_APPLICANTS = 1
+NUM_APPLICANTS = 5
 
 # Funding amounts (ETH). Contributors get more so they can make real deposits;
 # applicants need gas + enough to pay loan interest in the demo.
@@ -40,6 +40,8 @@ FUND_APPLICANT = 50
 SAMPLE_BTC = b"1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
 
 w3 = Web3(Web3.HTTPProvider(RPC))
+from web3.middleware import ExtraDataToPOAMiddleware
+w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
 assert w3.is_connected(), f"cannot reach geth at {RPC}"
 
 # Prefunded genesis account. Must be unlocked in geth (geth --unlock ...
