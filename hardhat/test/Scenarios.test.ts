@@ -302,3 +302,56 @@ describe("Scenario 11 — failed loan, empty compensation pool", () => {
     assert.equal(await loan!.read.failedMarked(), false);
   });
 });
+
+// ── locked-value-order repayment: highest-locked contributor refunded first ───
+describe("Scenario 12 — repayment refunds in locked-value order (highest first)", () => {
+  it("a partial repayment covering only the largest stake refunds that contributor alone", async () => {
+    const ctx = await deployService();
+    const { service, alice, bob, carol, applicant } = ctx;
+
+    // UNEQUAL deposits -> unequal locked amounts -> a deterministic refund order.
+    // alice has the largest stake, then bob, then carol.
+    await service.write.deposit({ account: alice.account, value: parseEther("6") });
+    await service.write.deposit({ account: bob.account,   value: parseEther("3") });
+    await service.write.deposit({ account: carol.account, value: parseEther("1") });
+    // cumulative disposable = 10 ETH
+
+    const { loan } = await approveLoan(ctx, { amount: parseEther("10"), rate: 10, duration: 1000n });
+    assert.ok(loan);
+
+    // proportional locks for a 10 ETH loan over 10 ETH disposable: each locks their full disposable
+    //   alice 6, bob 3, carol 1
+    assert.equal(await loan!.read.remainingDue([alice.account.address]), parseEther("6"));
+    assert.equal(await loan!.read.remainingDue([bob.account.address]),   parseEther("3"));
+    assert.equal(await loan!.read.remainingDue([carol.account.address]), parseEther("1"));
+
+    // Repay an amount whose BASE portion is exactly alice's 6 ETH and no more.
+    // base = payment * 100 / (100 + rate); to get base = 6, payment = 6 * 110 / 100 = 6.6
+    await loan!.write.repay({ account: applicant.account, value: parseEther("6.6") });
+
+    // alice (largest) is fully refunded; bob and carol are untouched
+    assert.equal(await loan!.read.remainingDue([alice.account.address]), 0n);
+    assert.equal(await loan!.read.remainingDue([bob.account.address]),   parseEther("3"));
+    assert.equal(await loan!.read.remainingDue([carol.account.address]), parseEther("1"));
+  });
+
+  it("a larger partial repayment spills over to the next contributor in order", async () => {
+    const ctx = await deployService();
+    const { service, alice, bob, carol, applicant } = ctx;
+
+    await service.write.deposit({ account: alice.account, value: parseEther("6") });
+    await service.write.deposit({ account: bob.account,   value: parseEther("3") });
+    await service.write.deposit({ account: carol.account, value: parseEther("1") });
+
+    const { loan } = await approveLoan(ctx, { amount: parseEther("10"), rate: 10, duration: 1000n });
+    assert.ok(loan);
+
+    // base = 7.5 -> covers alice's 6 fully, then 1.5 of bob's 3; carol still untouched
+    // payment = 7.5 * 110 / 100 = 8.25
+    await loan!.write.repay({ account: applicant.account, value: parseEther("8.25") });
+
+    assert.equal(await loan!.read.remainingDue([alice.account.address]), 0n);             // fully refunded
+    assert.equal(await loan!.read.remainingDue([bob.account.address]),   parseEther("1.5")); // partly
+    assert.equal(await loan!.read.remainingDue([carol.account.address]), parseEther("1"));   // untouched
+  });
+});

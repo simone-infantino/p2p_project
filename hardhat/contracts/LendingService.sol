@@ -279,7 +279,31 @@ function _createLoan(Proposal storage p, uint256 cumDisposable) internal returns
             sorted[i]  = active[bestIdx];
             amounts[i] = locks[bestIdx];
         }
+
+        // after you've filled active[0..cnt) and locks[0..cnt) in the first loop:
+        // for (uint256 i = 1; i < cnt; ++i) {
+            // address aKey = active[i];
+            // uint256 lKey = locks[i];
+            // uint256 j = i;
+            // shift larger-or-tied-with-higher-address entries one slot right
+            // while (j > 0 && _comesBefore(locks[j - 1], active[j - 1], lKey, aKey) == false) {
+                // active[j] = active[j - 1];
+                // locks[j]  = locks[j - 1];
+                // --j;
+            // }
+            // active[j] = aKey;
+            // locks[j]  = lKey;
+        // }  
     }
+
+    // true if (lockA, addrA) should come before (lockB, addrB):
+    // higher lock first; tie -> lower address first
+    // function _comesBefore(uint256 lockA, address addrA, uint256 lockB, address addrB)
+        // internal pure returns (bool)
+    // {
+        // if (lockA != lockB) return lockA > lockB;
+        // return addrA < addrB;
+    // }    
     
     function _onLoanOutcome(bool success) internal {
         if (success) {
