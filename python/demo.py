@@ -37,11 +37,14 @@ RPC = DEPLOYMENT["rpc"]
 GAS_PRICE = int(DEPLOYMENT["gasPrice"])
 
 w3 = Web3(Web3.HTTPProvider(RPC))
+from web3.middleware import ExtraDataToPOAMiddleware
+w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+
 assert w3.is_connected(), f"cannot reach geth at {RPC}"
 
 
 def abi_of(name):
-    return json.loads(Path(f"artifacts/contracts/{name}.sol/{name}.json").read_text())["abi"]
+    return json.loads(Path(f"hardhat/artifacts/contracts/{name}.sol/{name}.json").read_text())["abi"]
 
 
 ORACLE = w3.eth.contract(
@@ -69,8 +72,8 @@ BTC_EMPTY = b"1DemoEmptyAddressNeverRequestedXX"   # never requested -> stays 0 
 #          rejection driven by a REAL but insufficient balance (not just a zero).
 # Leave them as-is to have the demo SKIP the loans that need them (it warns);
 # fill them in to enable those workflows.
-BTC_ALT = b"INSERT_A_WELL_FUNDED_ADDRESS_FROM_SNAPSHOT"
-BTC_LOW = b"INSERT_A_LOW_BALANCE_ADDRESS_FROM_SNAPSHOT"
+BTC_ALT = b"1AwHZcytLpkAAUyWYu99eUb34ArLBvFngC"
+BTC_LOW = b"18K352vvZr8t31VJbH5Lj2aVSETxgukB1v"
 
 
 NAMES = {}   # address -> label, for printing

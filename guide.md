@@ -50,11 +50,18 @@ geth --datadir "${CHAINDATA_DIR}" \
   --http.api "web3,eth,debug,personal,net"
 ```
 
-### Check block production (another terminal)
-Attach to the Geth console and verify that blocks are being produced:
+### Geth attach
+
+Check block production
 ```shell
 geth attach $CHAIN_URL
 eth.blockNumber
+```
+
+Check account balance
+```shell
+eth.getBalance(eth.accounts[2])
+eth.getBalance("ACCOUNT_ADDRESS")
 ```
 
 ### Chain file tree

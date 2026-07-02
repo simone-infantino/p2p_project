@@ -303,7 +303,7 @@ describe("Scenario 11 — failed loan, empty compensation pool", () => {
   });
 });
 
-// ── locked-value-order repayment: highest-locked contributor refunded first ───
+// ── 12. locked-value-order repayment: highest-locked contributor refunded first ───
 describe("Scenario 12 — repayment refunds in locked-value order (highest first)", () => {
   it("a partial repayment covering only the largest stake refunds that contributor alone", async () => {
     const ctx = await deployService();
