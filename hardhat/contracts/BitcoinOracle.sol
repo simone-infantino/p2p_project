@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 contract BitcoinOracle {
     address public owner;             // off-chain oracle service account
+    address public pendingOwner;
     uint256 public minimumFee;        // = gasCost(pushBalance) * 0.1 gwei (set via measurement)
     uint256 public immutable deploymentBlock; // helps the off-chain daemon resume from here
 
@@ -17,6 +18,8 @@ contract BitcoinOracle {
     event UpdateRequested(bytes btcAddr, address indexed requester, uint256 fee);
     event BalanceUpdated(bytes btcAddr, uint256 satoshis);
     event MinimumFeeUpdated(uint256 newFee);
+    event OwnershipTransferStarted(address indexed currentOwner, address indexed pendingOwner);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     modifier onlyOwner() { require(msg.sender == owner, "not oracle"); _; }
 
@@ -56,5 +59,23 @@ contract BitcoinOracle {
         uint256 bal = address(this).balance;
         (bool ok, ) = to.call{value: bal}("");
         require(ok, "fee withdrawal failed");
+    }
+
+/// Step 1: the current owner nominates a new owner. Nothing changes yet —
+/// the nominee must accept, which prevents handing ownership to a wrong/dead address.
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "zero address");
+        pendingOwner = newOwner;
+        emit OwnershipTransferStarted(owner, newOwner);
+    }
+
+/// Step 2: the nominee accepts, completing the transfer. Only the pending owner
+/// can call this, proving they control the new key.
+    function acceptOwnership() external {
+        require(msg.sender == pendingOwner, "not pending owner");
+        address previous = owner;
+        owner = pendingOwner;
+        pendingOwner = address(0);
+        emit OwnershipTransferred(previous, owner);
     }
 }

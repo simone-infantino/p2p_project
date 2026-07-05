@@ -22,8 +22,6 @@ contract Loan {
     address[] public contributors;
     mapping(address => uint256) public initialLocked;
     mapping(address => uint256) public remainingDue;        // base principal still owed back
-    mapping(address => uint256) public compensationClaimed; // paid out from compensation pool
-    mapping(address => uint256) public forfeitedShare;      // base no longer owed (compensated)
 
     uint256 public totalBaseRepaid;
     bool    public successful;
@@ -172,7 +170,5 @@ contract Loan {
         uint256 due = remainingDue[contributor];
         uint256 take = amount > due ? due : amount;
         remainingDue[contributor] = due - take;
-        forfeitedShare[contributor] += take;
-        compensationClaimed[contributor] += amount;
     }
 }

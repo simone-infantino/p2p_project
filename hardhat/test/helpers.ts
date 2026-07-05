@@ -5,7 +5,7 @@
 // duplicated deploy/approve logic that was copied across suites.
 
 import { network } from "hardhat";
-import { parseEther, parseGwei, stringToHex, parseEventLogs } from "viem";
+import { parseGwei, stringToHex, parseEventLogs } from "viem";
 
 // A single shared in-process chain for the whole test run. Each test deploys
 // fresh contracts, so state never leaks between tests.

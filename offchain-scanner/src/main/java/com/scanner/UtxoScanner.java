@@ -12,14 +12,22 @@ import java.util.*;
 
 /**
  * Scans the first N blocks of the Bitcoin main net (from a Bitcoin Core blocks/ dir),
- * reconstructs the UTXO set one block at a time, and writes a snapshot of
- * address -> available balance (satoshis) to a TSV file.
+ * reconstructs the UTXO set INCREMENTALLY — one block at a time, as a node would —
+ * and after EACH processed block rewrites a snapshot of address -> available
+ * balance (satoshis) to a TSV file.
+ *
+ * The snapshot is written ATOMICALLY (temp file + atomic rename), so a concurrent
+ * reader (the oracle daemon) never observes a half-written file: every read sees a
+ * complete, consistent UTXO set as of some processed block height.
+ *
+ * Scanning stops at `maxBlocks` (default 131000); once reached, the final snapshot
+ * on disk is complete and the process exits.
  *
  * Supports Bitcoin Core 0.28+ block file obfuscation (xor.dat).
  *
  * Usage:
- *   java com.scanner.UtxoScanner <blocksDir> <outputSnapshot.tsv> [maxBlocks=131000]
- *   e.g. java com.scanner.UtxoScanner ~/.bitcoin/blocks utxo_snapshot.tsv 131000
+ *   java oracle.UtxoScanner <blocksDir> <outputSnapshot.tsv> [maxBlocks=131000]
+ *   e.g. java oracle.UtxoScanner ~/.bitcoin/blocks utxo_snapshot.tsv 131000
  */
 public class UtxoScanner {
 
@@ -46,8 +54,6 @@ public class UtxoScanner {
     }
 
     private void run(File blocksDir, String outPath, int maxBlocks) throws IOException {
-        // Context.getOrCreate(params) initializes or retrieves the bitcoinj runtime context for the current thread
-        // configuring it with the given network parameters (e.g., MainNet) so all bitcoinj operations work consistently.
         Context.getOrCreate(params); // bitcoinj 0.15+ needs a thread-local Context
 
         // ── read xor.dat if present (Bitcoin Core 0.28+) ──────────────────────
@@ -79,7 +85,8 @@ public class UtxoScanner {
         }
 
         try {
-            scanFiles(filesToScan, maxBlocks);
+            // scanFiles now writes the snapshot after EACH block (atomically)
+            scanFiles(filesToScan, maxBlocks, outPath);
         } finally {
             // always clean up temp files even if an exception occurs
             if (tempDir != null) {
@@ -89,9 +96,10 @@ public class UtxoScanner {
             }
         }
 
+        // final write to guarantee the on-disk file matches the last processed block
+        writeSnapshotAtomic(outPath);
         System.out.printf("DONE: %d live utxos, %d addresses%n",
                 utxoValue.size(), balances.size());
-        writeSnapshot(outPath);
     }
 
     // ── XOR helpers ───────────────────────────────────────────────────────────
@@ -136,17 +144,7 @@ public class UtxoScanner {
 
     // ── block scanning ────────────────────────────────────────────────────────
 
-    /**
-    * Iterates over Bitcoin block files, reconstructing blocks and processing transactions
-    * up to a maximum number of blocks. It skips duplicate blocks, handles malformed trailing
-    * data safely, and periodically logs progress including processed blocks, UTXOs, and addresses.
-    *
-    * @param files list of Bitcoin Core block data files to scan
-    * @param maxBlocks maximum number of blocks to process
-    */
-    private void scanFiles(List<File> files, int maxBlocks) {
-        // We read the block files because Bitcoin Core stores blockchain data as raw serialized .dat files, not as ready-to-use Block objects,
-        // so we must parse them to reconstruct transactions, addresses and UTXOs.
+    private void scanFiles(List<File> files, int maxBlocks, String outPath) throws IOException {
         BlockFileLoader loader = new BlockFileLoader(params, files);
         int processed = 0;
 
@@ -164,7 +162,13 @@ public class UtxoScanner {
             }
 
             processed++;
-            if (processed % 10_000 == 0) { // Every time 10000 blocks are processed, so is a log
+
+            // INCREMENTAL: after each block, publish the current UTXO balances so a
+            // reader always sees the set "as of the last processed block". The write
+            // is atomic, so the reader never catches a partial file.
+            writeSnapshotAtomic(outPath);
+
+            if (processed % 10_000 == 0) {
                 System.out.printf("processed %d blocks | %d utxos | %d addresses%n",
                         processed, utxoValue.size(), balances.size());
             }
@@ -173,16 +177,6 @@ public class UtxoScanner {
         System.out.printf("scanned %d blocks%n", processed);
     }
 
-    /**
-     * Processes a single Bitcoin block by updating the in-memory UTXO set.
-     * For each transaction in the block, it:
-     * spends previous outputs referenced by inputs (excluding coinbase transactions),
-     * removing them from the UTXO set and decrementing the corresponding address balances;
-     * creates new outputs, extracting addresses from scriptPubKeys, storing them as new UTXOs,
-     * and crediting the associated addresses with the output value.
-     * 
-     * @param block the Bitcoin block to process
-    **/
     private void processBlock(Block block) {
         List<Transaction> txs = block.getTransactions();
         if (txs == null) return;
@@ -194,7 +188,7 @@ public class UtxoScanner {
                     TransactionOutPoint op = in.getOutpoint();
                     String key = op.getHash().toString() + ":" + op.getIndex();
                     String owner = utxoOwner.remove(key);
-                    Long val     = utxoValue.remove(key); // Remove UTXO
+                    Long val     = utxoValue.remove(key);
                     if (owner != null && val != null) {
                         credit(owner, -val); // remove spent value from the address balance
                     }
@@ -230,39 +224,48 @@ public class UtxoScanner {
         }
     }
 
-    /**
-     * Updates the balance of a given address by adding the specified delta value.
-     * If the resulting balance becomes zero, the address is removed from the map
-     * to keep only active (non-zero) balances.
-     * 
-     * @param addr the Bitcoin address to update
-     * @param delta the amount to add (positive for received funds, negative for spent funds)
-    */
     private void credit(String addr, long delta) {
         long updated = balances.getOrDefault(addr, 0L) + delta;
         if (updated == 0) balances.remove(addr);
         else balances.put(addr, updated);
     }
 
-    private void writeSnapshot(String outPath) throws IOException {
-        try (BufferedWriter w = Files.newBufferedWriter(Paths.get(outPath))) {
-            for (Map.Entry<String, Long> e : balances.entrySet()) {
-                if (e.getValue() <= 0) continue;
-                w.write(e.getKey());
-                w.write('\t');
-                w.write(Long.toString(e.getValue()));
-                w.write('\n');
+    /**
+     * Atomically (re)write the snapshot: write the full balance map to a temp file
+     * in the SAME directory, then atomically rename it over the target. A concurrent
+     * reader therefore always opens either the old complete file or the new complete
+     * file — never a half-written one.
+     *
+     * The temp file must be on the same filesystem as the target for the rename to be
+     * atomic, which is why it is created in the target's parent directory.
+     */
+    private void writeSnapshotAtomic(String outPath) throws IOException {
+        Path target = Paths.get(outPath);
+        Path dir = target.toAbsolutePath().getParent();
+        Path tmp = Files.createTempFile(dir, "utxo_snapshot", ".tmp");
+        try {
+            try (BufferedWriter w = Files.newBufferedWriter(tmp)) {
+                for (Map.Entry<String, Long> e : balances.entrySet()) {
+                    if (e.getValue() <= 0) continue;
+                    w.write(e.getKey());
+                    w.write('\t');
+                    w.write(Long.toString(e.getValue()));
+                    w.write('\n');
+                }
             }
+            // atomic swap; falls back to a plain replace if the platform lacks atomic move
+            try {
+                Files.move(tmp, target,
+                        StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException ex) {
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(tmp); // no-op if the move succeeded
         }
-        System.out.println("snapshot written to " + outPath);
     }
 
-    /**
-    Collects Bitcoin Core block data files (blk00000.dat, blk00001.dat, ...)
-    from the given directory in sequential order until a missing file is found.
-    @param dir directory containing Bitcoin Core block files
-    @return ordered list of existing blk*.dat files
-    */
+    /** Collect blk00000.dat, blk00001.dat, ... in order. */
     private List<File> blockFiles(File dir) {
         List<File> files = new ArrayList<>();
         for (int i = 0; ; i++) {

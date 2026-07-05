@@ -7,7 +7,7 @@ interface IOracle {
     function getBalance(bytes calldata btcAddr) external view returns (uint256);
 }
 
-contract LendingService is ILendingServiceCallback {
+contract LendingServiceVulnerable is ILendingServiceCallback {
     // ---- constants ----
     uint256 public constant MIN_DEPOSIT = 100_000 wei;
     uint256 public constant PROPOSAL_VOTING_PERIOD = 12;
@@ -124,31 +124,26 @@ contract LendingService is ILendingServiceCallback {
         require(loan.isFailed(), "loan not failed");
         uint256 stillOwed = loan.remainingDue(msg.sender);
         require(stillOwed > 0, "nothing owed");
-        
-        // mark failed on first claim
         if (!loan.failedMarked()) {
             loan.markFailed();
             _onLoanOutcome(false);
         }
-        
         uint256 give = stillOwed > compensationPool ? compensationPool : stillOwed;
         require(give > 0, "compensation pool empty");
+    
+        (bool ok, ) = msg.sender.call{value: give}("");
+        require(ok, "transfer failed");
+    
+        // ── effects, now too late (identical to the safe version, just moved down) ──
         compensationPool -= give;
-        
-        // unlock contributor's funding pool position for the compensated portion
         locked[msg.sender] -= give;
         totalLocked -= give;
-        deposited[msg.sender] -= give;   // they got cash, so reduce their pool balance
+        deposited[msg.sender] -= give;
         totalDeposited -= give;
-
         if (deposited[msg.sender] == 0 && locked[msg.sender] == 0) {
             _removeContributor(msg.sender);
         }
-        
         loan.applyCompensation(msg.sender, give);
-        
-        (bool ok, ) = msg.sender.call{value: give}("");
-        require(ok, "transfer failed");
         emit CompensationClaimed(msg.sender, loanAddr, give);
     }
     

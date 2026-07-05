@@ -114,32 +114,10 @@ def send(acct, fn, value=0):
 def loan_at(addr):
     return w3.eth.contract(address=addr, abi=LOAN_ABI)
 
-
-def _nudge():
-    try:
-        funder = w3.eth.accounts[0]   # prefunded genesis signer (value-transfer only)
-        h = w3.eth.send_transaction(
-            {"from": funder, "to": funder, "value": 0, "gas": 21_000, "gasPrice": GAS_PRICE})
-        w3.eth.wait_for_transaction_receipt(h)
-    except Exception as e:
-        print("   (could not nudge a block — ensure geth is mining)", e)
-
-
 def mine(n):
     target = w3.eth.block_number + n
-    last = w3.eth.block_number
-    stalls = 0
     while w3.eth.block_number < target:
         time.sleep(1)
-        cur = w3.eth.block_number
-        if cur == last:
-            stalls += 1
-            if stalls >= 2:
-                _nudge()
-                stalls = 0
-        else:
-            stalls = 0
-        last = cur
 
 
 def mine_until_failed(loan):
