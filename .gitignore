@@ -1,4 +1,4 @@
+chain/data/geth
 bt_chain_blocks
-deployment.json
-oracle_state.json
+state
 venv

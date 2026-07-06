@@ -223,11 +223,11 @@ mvn archetype:generate \
 Create `utxo_snapshot.tsv` snapshot
 ```shell
 mvn clean package
-mvn clean compile
+#mvn clean compile
+```
+```shell
 # java com.scanner.UtxoScanner <blocksDir> <outputSnapshot.tsv> [maxBlocks=131000]
-java -jar target/offchain-scanner-1.0-SNAPSHOT-jar-with-dependencies.jar \
-  ~/projects/finalproject/bt_chain_blocks \
-  utxo_snapshot.tsv 131000
+java -jar target/offchain-scanner-1.0-SNAPSHOT-jar-with-dependencies.jar bt_chain_blocks utxo_snapshot.tsv 131000
 ```
 
 ---

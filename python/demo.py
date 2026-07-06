@@ -32,7 +32,7 @@ from web3 import Web3
 from eth_account import Account
 
 # ── config ──────────────────────────────────────────────────────────────────────
-DEPLOYMENT = json.loads(Path("deployment.json").read_text())
+DEPLOYMENT = json.loads(Path("state/deployment.json").read_text())
 RPC = DEPLOYMENT["rpc"]
 GAS_PRICE = int(DEPLOYMENT["gasPrice"])
 

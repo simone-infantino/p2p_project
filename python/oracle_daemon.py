@@ -23,13 +23,13 @@ from web3 import Web3
 from eth_account import Account
 
 # ── configuration (from setup.py's deployment.json) ───────────────────────────
-DEPLOYMENT = json.loads(Path("deployment.json").read_text())
+DEPLOYMENT = json.loads(Path("state/deployment.json").read_text())
 
 RPC          = DEPLOYMENT["rpc"]
 ORACLE_ADDR  = Web3.to_checksum_address(DEPLOYMENT["oracle"]["address"])
 ABI_PATH     = "hardhat/artifacts/contracts/BitcoinOracle.sol/BitcoinOracle.json"
 SNAPSHOT     = "offchain-scanner/utxo_snapshot.tsv"
-STATE_FILE   = "oracle_state.json"           # checkpoint of last processed block
+STATE_FILE   = "state/oracle_state.json"           # checkpoint of last processed block
 POLL_SECONDS = 2
 
 w3 = Web3(Web3.HTTPProvider(RPC))

@@ -24,7 +24,7 @@ from eth_account import Account
 # ── configuration ─────────────────────────────────────────────────────────────
 RPC = "http://127.0.0.1:8545"
 ARTIFACTS = Path("hardhat/artifacts/contracts")
-OUT = Path("deployment.json")
+OUT = Path("state/deployment.json")
 
 NUM_CONTRIBUTORS = 3
 NUM_APPLICANTS = 5

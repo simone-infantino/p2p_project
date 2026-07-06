@@ -23,7 +23,7 @@ from pathlib import Path
 from web3 import Web3
 from eth_account import Account
 
-DEPLOYMENT = json.loads(Path("deployment.json").read_text())
+DEPLOYMENT = json.loads(Path("state/deployment.json").read_text())
 RPC = DEPLOYMENT["rpc"]
 GAS_PRICE = int(DEPLOYMENT["gasPrice"])
 SERVICE_ADDR = Web3.to_checksum_address(DEPLOYMENT["lendingService"]["address"])
@@ -39,7 +39,7 @@ assert w3.is_connected(), f"cannot reach geth at {RPC}"
 abi = json.loads(Path("hardhat/artifacts/contracts/LendingService.sol/LendingService.json").read_text())["abi"]
 service = w3.eth.contract(address=SERVICE_ADDR, abi=abi)
 
-STATE = Path("auto_voter_state.json")   # checkpoint: last block we've scanned
+STATE = Path("state/auto_voter_state.json")   # checkpoint: last block we've scanned
 
 
 def load_checkpoint() -> int:
