@@ -1,4 +1,4 @@
 bt_chain_blocks
-venv
+deployment.json
 oracle_state.json
-deplyment.json
+venv

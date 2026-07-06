@@ -317,3 +317,28 @@ npx hardhat test ./contracts/CreatedTest3.t.sol --coverage
 ```
 
 ---
+
+### Orchestration tool
+
+`python3 tool.py`
+```shell
+======================================================================
+ Blockchain Utility
+======================================================================
+
+Workflow
+1) Initialize Geth chain (run once)
+2) Start Geth chain
+3) Deployment (run once) to initialize accounts, funds, contracts
+4) Start Oracle Daemon
+5) Start Auto Voter
+6) Start Demo (lending workflow simulation)
+
+Other
+7) Attach to Geth (query the chain)
+0|q) Exit
+
+Select an option: 
+```
+
+---
