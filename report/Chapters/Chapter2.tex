@@ -1,0 +1,146 @@
+% Chapter 2
+
+\chapter{Reentrancy and Security Discussion} % Main chapter title
+\label{Chapter2} % For referencing the chapter elsewhere, use \ref{Chapter2} 
+\setlength{\parindent}{0pt} % Rimuove il rientro di paragrafo
+
+%----------------------------------------------------------------------------------------
+\section{Gas Evaluation}
+
+Gas consumption was evaluated through the Hardhat testing environment, which provides
+the gas usage of each executed transaction. The implementation choices were analyzed
+considering the main operations of the lending protocol, such as deposits, proposal
+resolution, loan creation, repayments, and compensation claims.
+
+The contracts were designed to limit unnecessary storage operations, since writing to
+storage represents one of the most expensive operations in terms of gas consumption.
+For example, the \texttt{Loan} contract uses \texttt{immutable} variables for values that
+are fixed after deployment, such as the applicant address, principal amount, interest
+rate, and loan duration. This reduces storage usage and improves execution efficiency.
+
+The modular architecture also affects gas consumption. Each approved proposal creates a
+new \texttt{Loan} contract instead of storing all loans inside the main
+\texttt{LendingService} contract. Although contract creation introduces an additional
+deployment cost, this design improves separation of responsibilities and reduces the
+complexity of operations performed by the main contract.
+
+Some operations require iteration over dynamic arrays. In particular,
+\texttt{\_cumulativeDisposable()}, \texttt{\_approveWeight()}, and
+\texttt{\_lockProportional()} iterate over the contributor list to calculate available
+liquidity, voting weight, and fund allocation. Moreover, contributors are sorted during
+loan creation using a selection sort algorithm. These operations increase gas usage
+proportionally to the number of contributors, but they were considered acceptable for
+the scope of the project.
+
+The oracle interaction was also designed with gas efficiency in mind. The
+\texttt{BitcoinOracle} contract stores Bitcoin balances on-chain only after an
+off-chain update performed by the oracle owner. This avoids expensive on-chain Bitcoin
+blockchain analysis and keeps the Ethereum contract responsible only for verification
+and storage of the required information.
+
+%----------------------------------------------------------------------------------------
+\section{Reentrancy Protection}
+
+The project includes two versions of the lending service:
+\texttt{LendingService.sol}, containing the protected implementation, and
+\texttt{LendingServiceVulnerable.sol}, intentionally introducing a reentrancy
+vulnerability for testing purposes.
+
+The vulnerability is present in the \texttt{claimCompensation()} function. In the
+vulnerable implementation, the contract performs an external Ether transfer before
+updating its internal state:
+
+\begin{enumerate}
+	\item The compensation amount is calculated.
+	\item Ether is transferred to the contributor.
+	\item Internal accounting variables are updated.
+\end{enumerate}
+
+Since the recipient can execute arbitrary code during the external call, a malicious
+contract can re-enter the \texttt{claimCompensation()} function before the previous
+execution has completed. The attacker can therefore request multiple compensations
+using the same accounting state.
+
+The attack scenario is implemented in the
+\texttt{ReentrancyAttacker.sol} contract. The attacker contract receives Ether through
+the fallback function and recursively calls \texttt{claimCompensation()} while the
+vulnerable contract has not yet updated the contributor balances.
+
+The secure implementation applies the Checks--Effects--Interactions pattern by
+performing state updates before external calls:
+
+\begin{enumerate}
+	\item Check the validity of the request and the loan status.
+	\item Update the compensation pool and contributor accounting variables.
+	\item Perform the final Ether transfer.
+\end{enumerate}
+
+By changing the execution order, the attacker cannot reuse the same compensation
+position during a recursive call because the contract state already reflects the
+previous operation.
+
+The effectiveness of this modification is verified through the dedicated Hardhat tests:
+\texttt{Reentrancy.test.ts} evaluates the attack against the vulnerable contract,
+while \texttt{ReentrancySafe.test.ts} verifies that the protected implementation
+prevents the same malicious behaviour.
+
+%----------------------------------------------------------------------------------------
+\section{Discussion of Malicious Strategies}
+
+Several malicious strategies were considered during the implementation and testing
+phase.
+
+\subsection{Reentrancy Attack}
+
+The main security issue analyzed is the reentrancy vulnerability in the compensation
+mechanism. The vulnerable implementation allows an attacker contract to recursively
+call external functions before the contract state is updated. The attack is mitigated
+in the secure version by applying the Checks--Effects--Interactions pattern.
+
+\subsection{Unauthorized Access}
+
+Administrative operations are protected through the \texttt{onlyAdmin} modifier.
+Functions such as oracle replacement, service termination, and administrator transfer
+can only be executed by the current administrator.
+
+The ownership transfer mechanism uses a two-step process. The current administrator
+first nominates a pending administrator, who must explicitly accept the role. This
+prevents accidental transfers to invalid addresses.
+
+\subsection{Invalid Input Manipulation}
+
+All externally callable functions validate input parameters using Solidity
+\texttt{require} statements. Examples include:
+\begin{itemize}
+	\item minimum deposit requirements;
+	\item valid interest rate ranges;
+	\item positive loan amounts and durations;
+	\item valid proposal states;
+	\item valid oracle and administrator addresses.
+\end{itemize}
+
+These checks prevent inconsistent states from being introduced through malformed
+transactions.
+
+\subsection{Manipulation of Loan Voting}
+
+The voting system does not use a simple one-address-one-vote mechanism. Instead, voting
+power is weighted according to the contributor's disposable liquidity. This prevents
+accounts with negligible deposits from having the same influence as major liquidity
+providers.
+
+\subsection{Denial of Service and Gas Limitations}
+
+The implementation relies on iterations over contributor lists for some operations.
+Although necessary for proportional fund allocation and weighted voting, these loops
+could become expensive if the number of contributors grows significantly.
+
+For this reason, dynamic operations are limited to the contributor set maintained by
+the contract, and contributors with no remaining deposited or locked funds are removed
+from the list.
+
+Overall, the final implementation follows Solidity security best practices and was
+validated by comparing the vulnerable and secure implementations through dedicated
+security tests.
+
+%----------------------------------------------------------------------------------------

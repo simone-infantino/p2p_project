@@ -1,0 +1,52 @@
+% Chapter 3
+
+\chapter{User Manual} % Main chapter title
+\label{Chapter3} % For referencing the chapter elsewhere, use \ref{Chapter3} 
+\setlength{\parindent}{0pt} % Rimuove il rientro di paragrafo
+
+%----------------------------------------------------------------------------------------
+\section{Project Structure}
+
+The project is organized into several modules, each responsible for a specific component of the decentralized lending platform. The directory structure is designed to clearly separate blockchain data, smart contracts, off-chain services, deployment scripts, and utility tools.
+
+\begin{itemize}
+	\item \textbf{bt\_chain\_blocks/}: local copy of the Bitcoin blockchain blocks used by the off-chain scanner.
+	\item \textbf{chain/}: contains the local Ethereum blockchain configuration, including the genesis file, account password, and Geth data directory.
+	\item \textbf{hardhat/}: contains the Solidity smart contracts, deployment scripts, and Hardhat configuration used during development and testing.
+	\item \textbf{offchain-scanner/}: Java application that scans the Bitcoin blockchain and extracts UTXO information required by the lending protocol.
+	\item \textbf{python/}: includes all Python scripts responsible for contract deployment, oracle management, automated voting, and the demonstration workflow.
+	\item \textbf{state/}: stores serialized state files generated during the deployment process, allowing the various Python components to share deployment information.
+	\item \textbf{tool.py}: orchestration script that provides a unified interface for setting up and running the entire system.
+	\item \textbf{venv/}: Python virtual environment containing all required dependencies.
+\end{itemize}
+
+%----------------------------------------------------------------------------------------
+\section{Orchestration Script}
+
+The entire project can be managed through the \texttt{tool.py} Python script, which acts as an orchestration tool. It provides an interactive command-line menu that executes the required Linux shell commands and external programs (such as Geth, Maven, and the Python utilities) to set up and run the complete system. This approach simplifies the deployment process by automating the execution of individual terminal commands behind a single interface.
+
+The available operations are summarized below.
+
+\begin{enumerate}
+	\item \textbf{Copy Bitcoin blocks and run the Off-chain Scanner.} This operation copies the local Bitcoin blockchain into the project directory, compiles the Java scanner using Maven, and generates the UTXO snapshot required by the protocol. This step only needs to be executed once.
+	
+	\item \textbf{Setup the Python virtual environment.} A Python virtual environment is created (if not already available) and the required dependencies are installed automatically.
+	
+	\item \textbf{Initialize the local Ethereum blockchain.} Existing Geth chain data are removed and a new blockchain is initialized from the provided genesis configuration.
+	
+	\item \textbf{Start the local Geth node.} Launches the private Ethereum blockchain with mining enabled, unlocks the predefined account, and exposes the HTTP JSON-RPC interface used by the application.
+	
+	\item \textbf{Deploy the application.} Executes the deployment script, creates the required accounts, deploys all smart contracts, initializes the protocol state, and stores deployment information inside the \texttt{state/} directory.
+	
+	\item \textbf{Start the Oracle Daemon.} Launches the off-chain oracle responsible for monitoring blockchain events and providing external information required by the protocol.
+	
+	\item \textbf{Start the Auto Voter.} Runs the automated voting component that simulates validator participation in governance decisions.
+	
+	\item \textbf{Run the demonstration.} Executes a complete lending workflow demonstrating the interaction among borrowers, lenders, smart contracts, and off-chain services.
+	
+	\item \textbf{Attach to Geth.} Opens the JavaScript console connected to the running Ethereum node, allowing direct inspection of accounts, transactions, and contract state.
+\end{enumerate}
+
+To correctly execute the project, the following workflow is recommended. For each step, the user should open a terminal, execute \texttt{python3 tool.py}, and select the corresponding menu option. Operations that start long-running services (such as the Geth node, the Oracle Daemon, and the Auto Voter) keep the process active and therefore require the terminal to remain open while the rest of the system is running. Consequently, a new terminal should be opened for each subsequent service.
+
+%----------------------------------------------------------------------------------------
