@@ -225,7 +225,7 @@ function _createLoan(Proposal storage p, uint256 cumDisposable) internal returns
 
     Loan loan = (new Loan){value: actualPrincipal}(
         p.applicant, actualPrincipal, p.interestRate, p.duration,
-        collateralPct, p.btcAddress, sorted, amounts
+        collateralPct, sorted, amounts
     );
     isActiveLoan[address(loan)] = true;
     loansByApplicant[p.applicant].push(address(loan));
@@ -348,10 +348,6 @@ function _createLoan(Proposal storage p, uint256 cumDisposable) internal returns
         require(isActiveLoan[msg.sender], "not a known loan");
         isActiveLoan[msg.sender] = false;
         _onLoanOutcome(true);
-    }
-    
-    function onLoanFailedMarked() external override {
-        // already handled in claimCompensation
     }
     
     // ============ admin / upgradability ============

@@ -24,19 +24,20 @@ describe("BitcoinOracle", () => {
   });
 
   it("requestUpdate reverts when the fee is below the minimum", async () => {
-    const { oracle, alice } = await deployOracle();
+    const { oracle, alice, minFee } = await deployOracle();
     await assert.rejects(
-      oracle.write.requestUpdate([BTC], { account: alice.account, value: 0n }),
+      oracle.write.requestUpdate([BTC], { account: alice.account, value: minFee -1n}),
       /fee too low/
     );
   });
 
-  it("requestUpdate succeeds, marks tracked, emits UpdateRequested", async () => {
+  it("requestUpdate succeeds and emits UpdateRequested", async () => {
     const { oracle, alice, minFee, publicClient } = await deployOracle();
     const hash = await oracle.write.requestUpdate([BTC], { account: alice.account, value: minFee });
     const logs = await eventsFrom(publicClient, oracle.abi, hash, "UpdateRequested");
     assert.equal(logs.length, 1);
-    assert.equal(await oracle.read.tracked([BTC]), true);
+    assert.equal(logs[0].args.btcAddr.toLowerCase(), BTC.toLowerCase());
+    assert.equal(logs[0].args.fee, minFee); 
   });
 
   it("pushBalance is restricted to the owner", async () => {

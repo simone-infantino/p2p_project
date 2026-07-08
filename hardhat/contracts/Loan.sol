@@ -5,7 +5,6 @@ interface ILendingServiceCallback {
     function onLoanRefund(address contributor, uint256 baseAmount) external payable;
     function onLoanInterestCollateral() external payable;
     function onLoanSuccessful() external;
-    function onLoanFailedMarked() external;
 }
 
 contract Loan {
@@ -16,7 +15,6 @@ contract Loan {
     uint256 public immutable duration;      // in blocks
     uint256 public immutable startBlock;
     uint8   public immutable collateralPct; // snapshot at creation
-    bytes   public btcAddress;
 
     // contributors sorted by initial locked DESC, address ASC (repayment refund order)
     address[] public contributors;
@@ -39,7 +37,6 @@ contract Loan {
         uint8 _interestRate,
         uint256 _duration,
         uint8 _collateralPct,
-        bytes memory _btcAddress,
         address[] memory _sortedContributors,
         uint256[] memory _lockedAmounts
     ) payable {
@@ -52,7 +49,6 @@ contract Loan {
         duration = _duration;
         startBlock = block.number;
         collateralPct = _collateralPct;
-        btcAddress = _btcAddress;
 
         for (uint256 i = 0; i < _sortedContributors.length; ++i) {
             address c = _sortedContributors[i];
@@ -112,8 +108,9 @@ contract Loan {
 
     function _distributeBase(uint256 amount) internal {
         totalBaseRepaid += amount;
+        uint256 n = contributors.length;
         // refund contributors in order, highest initial locked first
-        for (uint256 i = 0; i < contributors.length && amount > 0; ++i) {
+        for (uint256 i = 0; i < n && amount > 0; ++i) {
             address c = contributors[i];
             uint256 due = remainingDue[c];
             if (due == 0) continue;
@@ -139,7 +136,8 @@ contract Loan {
 
         // gain -> contributors directly, proportionally to their initial lock
         uint256 distributed = 0;
-        for (uint256 i = 0; i < contributors.length; ++i) {
+        uint256 n = contributors.length;
+        for (uint256 i = 0; i < n; ++i) {
             address c = contributors[i];
             uint256 share = (gain * initialLocked[c]) / principal;
             if (share > 0) {

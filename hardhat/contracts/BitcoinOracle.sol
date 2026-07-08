@@ -10,7 +10,6 @@ contract BitcoinOracle {
     // BTC address keyed by the ASCII bytes of its canonical string form
     // (exactly what bitcoinj's address.toString() / python-bitcoinlib str(addr) produces).
     mapping(bytes => uint256) public balances; // satoshis
-    mapping(bytes => bool)    public tracked;
 
     // NOTE: btcAddr is intentionally NOT indexed. Indexed dynamic types are stored
     // as a keccak hash in the log topic, which the off-chain service could never
@@ -32,7 +31,6 @@ contract BitcoinOracle {
     /// Applicants call this to enqueue a refresh of `btcAddr`.
     function requestUpdate(bytes calldata btcAddr) external payable {
         require(msg.value >= minimumFee, "fee too low");
-        tracked[btcAddr] = true;
         emit UpdateRequested(btcAddr, msg.sender, msg.value);
     }
 
@@ -40,7 +38,6 @@ contract BitcoinOracle {
     /// "update operation" whose gas cost defines the minimum fee.
     function pushBalance(bytes calldata btcAddr, uint256 satoshis) external onlyOwner {
         balances[btcAddr] = satoshis;
-        tracked[btcAddr] = true;
         emit BalanceUpdated(btcAddr, satoshis);
     }
 

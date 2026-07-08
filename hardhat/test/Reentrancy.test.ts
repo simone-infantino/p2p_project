@@ -51,11 +51,6 @@ describe("Reentrancy — draining the compensation pool (faithful vulnerable for
       ["bob", bob.account.address],
       ["attacker", attacker.address],
     ];
-    for (const [name, addr] of parties) {
-      const dep = await service.read.deposited([addr]) as bigint;
-      const lck = await service.read.locked([addr]) as bigint;
-      console.log(name, "deposited:", dep, "locked:", lck, "disposable:", dep - lck);
-    }
 
     const big = await makeLoan(parseEther("15"), 10, 100000n);
     assert.ok(big.approved);
@@ -74,9 +69,6 @@ describe("Reentrancy — draining the compensation pool (faithful vulnerable for
     const reentries = pool / owed - 1n;
 
     const poolBefore = await service.read.compensationPool();
-    console.log("owed:", owed, "reentries:", reentries, "pool:", pool);
-    console.log("attacker deposited:", await service.read.deposited([attacker.address]));
-    console.log("attacker locked:", await service.read.locked([attacker.address]));
 
     try {
       await attacker.write.attack([victim.loan, reentries]);

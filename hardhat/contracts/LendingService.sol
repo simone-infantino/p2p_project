@@ -56,7 +56,6 @@ contract LendingService is ILendingServiceCallback {
     
     // ---- loans ----
     mapping(address => bool) public isActiveLoan; // contract address => active
-    mapping(address => address[]) public loansByApplicant;
     
     // ---- events ----
     event Deposited(address indexed who, uint256 amount);
@@ -230,10 +229,9 @@ function _createLoan(Proposal storage p, uint256 cumDisposable) internal returns
 
     Loan loan = (new Loan){value: actualPrincipal}(
         p.applicant, actualPrincipal, p.interestRate, p.duration,
-        collateralPct, p.btcAddress, sorted, amounts
+        collateralPct, sorted, amounts
     );
     isActiveLoan[address(loan)] = true;
-    loansByApplicant[p.applicant].push(address(loan));
     return address(loan);
 }
     
@@ -354,11 +352,7 @@ function _createLoan(Proposal storage p, uint256 cumDisposable) internal returns
         isActiveLoan[msg.sender] = false;
         _onLoanOutcome(true);
     }
-    
-    function onLoanFailedMarked() external override {
-        // already handled in claimCompensation
-    }
-    
+
     // ============ admin / upgradability ============
     
     function setSuccessor(address _successor) external onlyAdmin { successor = _successor; }
