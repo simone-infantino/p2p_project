@@ -1,9 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { viem, networkHelpers, eventsFrom } from "./helpers.js";
-import { stringToHex, parseEther, parseGwei } from "viem";
+import { viem, networkHelpers, eventsFrom, BTC } from "./helpers.js";
+import { parseEther, parseGwei } from "viem";
 
-const BTC = stringToHex("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa");
 const ONE_BTC = 100_000_000n;
 
 describe("Reentrancy — the real LendingService resists the identical attack", () => {

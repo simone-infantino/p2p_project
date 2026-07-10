@@ -5,14 +5,14 @@
 // duplicated deploy/approve logic that was copied across suites.
 
 import { network } from "hardhat";
-import { parseGwei, stringToHex, parseEventLogs } from "viem";
+import { parseGwei, parseEventLogs } from "viem";
 
 // A single shared in-process chain for the whole test run. Each test deploys
 // fresh contracts, so state never leaks between tests.
 export const { viem, networkHelpers } = await network.getOrCreate();
 
-// Canonical BTC address -> ASCII 0x-bytes, the key the scanner/oracle agree on.
-export const BTC = stringToHex("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa");
+// Canonical BTC address.
+export const BTC = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa";
 
 // 1 BTC in satoshis -> 30 ETH equivalent; clears the liquidity check at our amounts.
 export const ONE_BTC_SATS = 100_000_000n;

@@ -62,18 +62,18 @@ CF = None                                                     # fresh contributo
 applicants = [Account.from_key(a["key"]) for a in DEPLOYMENT["applicants"]]
 AF = None                                                     # fresh applicant (created in-demo)
 
-BTC_GOOD = b"1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"   # genesis coinbase — definitely funded in the snapshot
-BTC_EMPTY = b"1DemoEmptyAddressNeverRequestedXX"   # never requested -> stays 0 -> liquidity fails
+BTC_GOOD = 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"   # genesis coinbase — definitely funded in the snapshot
+BTC_EMPTY = 1DemoEmptyAddressNeverRequestedXX"   # never requested -> stays 0 -> liquidity fails
 
-# ── PLACEHOLDERS — insert real addresses from your utxo_snapshot.tsv ─────────────
+# ── PLACEHOLDERS — insert real addresses from your utxo_snapshot.txt ─────────────
 # BTC_ALT: any WELL-FUNDED address (large balance) — used as a second good address
 #          so the demo performs liquidity checks against more than one address.
 # BTC_LOW: a LOW-BALANCE address (a few thousand sats) — used to show a liquidity
 #          rejection driven by a REAL but insufficient balance (not just a zero).
 # Leave them as-is to have the demo SKIP the loans that need them (it warns);
 # fill them in to enable those workflows.
-BTC_ALT = b"1AwHZcytLpkAAUyWYu99eUb34ArLBvFngC"
-BTC_LOW = b"18K352vvZr8t31VJbH5Lj2aVSETxgukB1v"
+BTC_ALT = 1AwHZcytLpkAAUyWYu99eUb34ArLBvFngC"
+BTC_LOW = 18K352vvZr8t31VJbH5Lj2aVSETxgukB1v"
 
 
 NAMES = {}   # address -> label, for printing
@@ -144,11 +144,11 @@ def create_funded_account(eth_amount, name):
 def request_oracle(applicant, btc):
     fee = ORACLE.functions.minimumFee().call()
     send(applicant, ORACLE.functions.requestUpdate(btc), value=fee)
-    print(f"   {label(applicant)} requested an oracle update for {btc.decode()} (fee {fee} wei)")
+    print(f"   {label(applicant)} requested an oracle update for {btc} (fee {fee} wei)")
 
 
 def wait_for_oracle(btc, timeout=90):
-    print(f"   waiting for the oracle daemon to push a balance for {btc.decode()} …")
+    print(f"   waiting for the oracle daemon to push a balance for {btc} …")
     deadline = time.time() + timeout
     while time.time() < deadline:
         bal = ORACLE.functions.getBalance(btc).call()
@@ -252,7 +252,7 @@ def open_loan(name, applicant, amount, rate, duration, btc=BTC_GOOD, approve=Tru
     pid = SERVICE.functions.nextProposalId().call()
     send(applicant, SERVICE.functions.submitProposal(wei(amount), rate, duration, btc))
     print(f"   proposal #{pid} submitted by {label(applicant)} "
-          f"(amount={amount}, rate={rate}%, dur={duration}, btc={btc.decode()})")
+          f"(amount={amount}, rate={rate}%, dur={duration}, btc={btc})")
     vote_others(pid, approve=approve)
     mine(13)
     rc = send(applicant, SERVICE.functions.resolveProposal(pid))

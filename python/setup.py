@@ -37,7 +37,7 @@ FUND_CONTRIBUTOR = 100
 FUND_APPLICANT = 50
 
 # A representative BTC address (ASCII bytes) used only to estimate pushBalance gas.
-SAMPLE_BTC = b"1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+SAMPLE_BTC = 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
 
 w3 = Web3(Web3.HTTPProvider(RPC))
 from web3.middleware import ExtraDataToPOAMiddleware
@@ -70,7 +70,7 @@ def new_funded_account(eth_amount: int) -> Account:
         "gasPrice": GAS_PRICE,
         "nonce": w3.eth.get_transaction_count(funder),
     }
-    h = w3.eth.send_transaction(tx)  # geth signs, funder is unlocked
+    h = w3.eth.send_transaction(tx)
     w3.eth.wait_for_transaction_receipt(h)
     return acct
 
@@ -83,11 +83,10 @@ def deploy(acct: Account, abi, bytecode, *args):
     tx = ctor.build_transaction({
         "from": acct.address,
         "nonce": w3.eth.get_transaction_count(acct.address),
-        "gas": int(gas_est * 1.2),  # 20% headroom
+        "gas": int(gas_est * 1.2),
         "gasPrice": GAS_PRICE,
     })
     signed = acct.sign_transaction(tx)
-    # web3.py v7: signed.raw_transaction ; v6: signed.rawTransaction
     h = w3.eth.send_raw_transaction(signed.raw_transaction)
     r = w3.eth.wait_for_transaction_receipt(h)
     assert r.status == 1, "deployment reverted"

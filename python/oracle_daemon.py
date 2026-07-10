@@ -28,7 +28,7 @@ DEPLOYMENT = json.loads(Path("state/deployment.json").read_text())
 RPC          = DEPLOYMENT["rpc"]
 ORACLE_ADDR  = Web3.to_checksum_address(DEPLOYMENT["oracle"]["address"])
 ABI_PATH     = "hardhat/artifacts/contracts/BitcoinOracle.sol/BitcoinOracle.json"
-SNAPSHOT     = "offchain-scanner/utxo_snapshot.tsv"
+SNAPSHOT     = "offchain-scanner/utxo_snapshot.txt"
 STATE_FILE   = "state/oracle_state.json"           # checkpoint of last processed block
 POLL_SECONDS = 2
 
@@ -85,7 +85,7 @@ reload_snapshot_if_changed()
 def deployment_block() -> int:
     """Block where the oracle was deployed; used as the very first checkpoint."""
     try:
-        return int(oracle.functions.deploymentBlock().call())
+        return int(oracle.functions.deployed_block().call())
     except Exception:
         return 0  # fallback if the getter isn't present
 
@@ -104,7 +104,7 @@ def save_last_block(b: int) -> None:
 def push_balance(btc_addr_str: str, sats: int):
     nonce = w3.eth.get_transaction_count(owner.address)
     tx = oracle.functions.pushBalance(
-        btc_addr_str.encode("ascii"), sats
+        btc_addr_str, sats
     ).build_transaction({
         "from": owner.address,
         "nonce": nonce,
@@ -126,7 +126,7 @@ def process_range(from_block: int, to_block: int) -> None:
     )
     for ev in events:
         btc_bytes = ev["args"]["btcAddr"]                 # raw bytes (non-indexed)
-        addr = btc_bytes.decode("ascii", errors="replace")
+        addr = btc_bytes
         sats = balances.get(addr, 0)                      # unknown address -> 0
         txh = push_balance(addr, sats)
         print(f"pushed {addr} = {sats} sat  (tx {txh.hex()})")

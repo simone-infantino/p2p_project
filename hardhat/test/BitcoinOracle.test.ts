@@ -4,7 +4,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseGwei, stringToHex } from "viem";
+import { parseGwei } from "viem";
 import { viem, BTC, eventsFrom } from "./helpers.js";
 
 async function deployOracle() {
@@ -16,11 +16,11 @@ async function deployOracle() {
 }
 
 describe("BitcoinOracle", () => {
-  it("constructor sets owner, minimumFee and deploymentBlock", async () => {
+  it("constructor sets owner, minimumFee and deployed_block", async () => {
     const { oracle, owner, minFee } = await deployOracle();
     assert.equal((await oracle.read.owner()).toLowerCase(), owner.account.address.toLowerCase());
     assert.equal(await oracle.read.minimumFee(), minFee);
-    assert.ok((await oracle.read.deploymentBlock()) > 0n);
+    assert.ok((await oracle.read.deployed_block()) > 0n);
   });
 
   it("requestUpdate reverts when the fee is below the minimum", async () => {
@@ -59,7 +59,7 @@ describe("BitcoinOracle", () => {
 
   it("getBalance returns 0 for an unknown address", async () => {
     const { oracle } = await deployOracle();
-    const unknown = stringToHex("1BoatSLRHtKNngkdXEeobR76b53LETtpyT");
+    const unknown = "1BoatSLRHtKNngkdXEeobR76b53LETtpyT";
     assert.equal(await oracle.read.getBalance([unknown]), 0n);
   });
 

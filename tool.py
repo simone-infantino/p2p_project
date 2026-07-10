@@ -45,7 +45,7 @@ def offchain_scanner():
             "-jar",
             "target/offchain-scanner-1.0-SNAPSHOT-jar-with-dependencies.jar",
             "../bt_chain_blocks",
-            "utxo_snapshot.tsv",
+            "utxo_snapshot.txt",
             "131000"
         ], cwd=project_dir, check=True)
 

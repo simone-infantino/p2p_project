@@ -14,10 +14,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseEther, stringToHex } from "viem";
-import {
-  viem, deployService, eventsFrom, totalOwed, networkHelpers, BTC, ONE_BTC_SATS,
-} from "./helpers.js";
+import { parseEther } from "viem";
+import { viem, deployService, eventsFrom, totalOwed, networkHelpers, BTC, ONE_BTC_SATS } from "./helpers.js";
 
 describe("Multi-loan — three simultaneous proposals", () => {
   it("A repaid fully (last), B partially repaid + compensated, C rejected on BTC check", async () => {
@@ -30,7 +28,7 @@ describe("Multi-loan — three simultaneous proposals", () => {
     await service.write.deposit({ account: carol.account, value: parseEther("10") });
 
     // BTC is funded (A and B will pass liquidity); a second address stays empty (C fails)
-    const BTC_EMPTY = stringToHex("1BoatSLRHtKNngkdXEeobR76b53LETtpyT");
+    const BTC_EMPTY = "1BoatSLRHtKNngkdXEeobR76b53LETtpyT";
     await oracle.write.pushBalance([BTC, ONE_BTC_SATS]);
 
     // ── submit all three "simultaneously" ──────────────────────────────────────

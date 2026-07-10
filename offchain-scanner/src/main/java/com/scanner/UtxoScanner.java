@@ -26,8 +26,8 @@ import java.util.*;
  * Supports Bitcoin Core 0.28+ block file obfuscation (xor.dat).
  *
  * Usage:
- *   java oracle.UtxoScanner <blocksDir> <outputSnapshot.tsv> [maxBlocks=131000]
- *   e.g. java oracle.UtxoScanner ~/.bitcoin/blocks utxo_snapshot.tsv 131000
+ *   java oracle.UtxoScanner <blocksDir> <outputSnapshot.txt> [maxBlocks=131000]
+ *   e.g. java oracle.UtxoScanner ~/.bitcoin/blocks utxo_snapshot.txt 131000
  */
 public class UtxoScanner {
 
@@ -43,7 +43,7 @@ public class UtxoScanner {
 
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
-            System.err.println("Usage: UtxoScanner <blocksDir> <out.tsv> [maxBlocks]");
+            System.err.println("Usage: UtxoScanner <blocksDir> <out.txt> [maxBlocks]");
             System.exit(1);
         }
         File blocksDir = new File(args[0]);
@@ -241,28 +241,17 @@ public class UtxoScanner {
      */
     private void writeSnapshotAtomic(String outPath) throws IOException {
         Path target = Paths.get(outPath);
-        Path dir = target.toAbsolutePath().getParent();
-        Path tmp = Files.createTempFile(dir, "utxo_snapshot", ".tmp");
-        try {
-            try (BufferedWriter w = Files.newBufferedWriter(tmp)) {
-                for (Map.Entry<String, Long> e : balances.entrySet()) {
-                    if (e.getValue() <= 0) continue;
-                    w.write(e.getKey());
-                    w.write('\t');
-                    w.write(Long.toString(e.getValue()));
-                    w.write('\n');
-                }
+        Path tmp = Paths.get(outPath + ".tmp");   // sibling temp file, same directory
+        try (BufferedWriter w = Files.newBufferedWriter(tmp)) {
+            for (Map.Entry<String, Long> e : balances.entrySet()) {
+                if (e.getValue() <= 0) continue;
+                w.write(e.getKey());
+                w.write('\t');
+                w.write(Long.toString(e.getValue()));
+                w.write('\n');
             }
-            // atomic swap; falls back to a plain replace if the platform lacks atomic move
-            try {
-                Files.move(tmp, target,
-                        StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException ex) {
-                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(tmp); // no-op if the move succeeded
         }
+        Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);  // atomic on Linux
     }
 
     /** Collect blk00000.dat, blk00001.dat, ... in order. */

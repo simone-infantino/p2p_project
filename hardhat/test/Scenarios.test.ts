@@ -12,10 +12,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { parseEther, zeroAddress } from "viem";
-import {
-  deployService, fund, approveLoan, totalOwed, eventsFrom,
-  networkHelpers, BTC, ONE_BTC_SATS,
-} from "./helpers.js";
+import { deployService, fund, approveLoan, totalOwed, eventsFrom, networkHelpers, BTC, ONE_BTC_SATS } from "./helpers.js";
 
 // ── 1. accepted and repaid correctly — 1 loan ─────────────────────────────────
 describe("Scenario 1 — loan accepted and fully repaid", () => {

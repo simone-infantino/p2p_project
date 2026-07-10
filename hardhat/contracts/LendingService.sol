@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import "./Loan.sol";
 
 interface IOracle {
-    function getBalance(bytes calldata btcAddr) external view returns (uint256);
+    function getBalance(string calldata btcAddr) external view returns (uint256);
 }
 
 contract LendingService is ILendingServiceCallback {
@@ -45,7 +45,7 @@ contract LendingService is ILendingServiceCallback {
         uint256 amount;
         uint8   interestRate;
         uint256 duration;
-        bytes   btcAddress;
+        string   btcAddress;
         uint256 startBlock;
         bool    closed;
         bool    approved;
@@ -60,7 +60,7 @@ contract LendingService is ILendingServiceCallback {
     // ---- events ----
     event Deposited(address indexed who, uint256 amount);
     event Withdrawn(address indexed who, uint256 amount);
-    event ProposalSubmitted(uint256 indexed id, address indexed applicant, uint256 amount, uint8 interestRate, uint256 duration, bytes btcAddress);
+    event ProposalSubmitted(uint256 indexed id, address indexed applicant, uint256 amount, uint8 interestRate, uint256 duration, string btcAddress);
     event Voted(uint256 indexed id, address indexed voter, Vote vote);
     event ProposalResolved(uint256 indexed id, bool approved, address loanContract);
     event CompensationClaimed(address indexed contributor, address indexed loan, uint256 amount);
@@ -153,7 +153,7 @@ contract LendingService is ILendingServiceCallback {
     
     // ============ applicant operations ============
     
-    function submitProposal(uint256 amount, uint8 interestRate, uint256 duration, bytes calldata btcAddress) external notTerminated returns (uint256 id) {
+    function submitProposal(uint256 amount, uint8 interestRate, uint256 duration, string calldata btcAddress) external notTerminated returns (uint256 id) {
         require(interestRate >= 1 && interestRate <= 100, "rate out of range");
         require(amount > 0 && duration > 0, "bad params");
         id = nextProposalId++;
@@ -206,7 +206,7 @@ function _cumulativeDisposable() internal view returns (uint256 total) {
     return total;
 }
 
-function _passesLiquidity(bytes storage btcAddr, uint256 amount) internal view returns (bool){
+function _passesLiquidity(string storage btcAddr, uint256 amount) internal view returns (bool){
     uint256 sats = oracle.getBalance(btcAddr);
     uint256 ethEquiv = (sats * BTC_ETH_RATE * 1 ether) / SATOSHIS_PER_BTC;
     return ethEquiv >= amount;

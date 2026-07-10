@@ -65,7 +65,6 @@ def approve(pid: int):
             "gasPrice": GAS_PRICE,
         })
         signed = voter.sign_transaction(tx)
-        # web3.py v7: signed.raw_transaction ; v6: signed.rawTransaction
         h = w3.eth.send_raw_transaction(signed.raw_transaction)
         w3.eth.wait_for_transaction_receipt(h)
         print(f"  ✓ approved proposal #{pid}")
@@ -82,7 +81,6 @@ def serve():
         latest = w3.eth.block_number
         if latest >= last:
             try:
-                # web3.py v7 arg names; on v6 use fromBlock/toBlock
                 logs = service.events.ProposalSubmitted().get_logs(
                     from_block=last, to_block=latest)
                 for ev in logs:
