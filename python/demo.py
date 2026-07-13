@@ -4,7 +4,7 @@ demo.py — concurrent-loan showcase, run ALONGSIDE the real oracle daemon and
 the auto-voter bot (not simulating either).
 
 Run order (three terminals, same geth chain):
-    python oracle_daemon.py     # responds to requestUpdate by pushing balances
+    python oracle_daemon.py     # responds to request_update by pushing balances
     python auto_voter.py        # votes APPROVE as contributors[0] on every proposal
     python demo.py              # this script: drives the operations
 
@@ -12,12 +12,12 @@ What this satisfies from the spec:
   * creates new accounts itself (a fresh contributor AND a fresh applicant),
     funded by a prefunded genesis account via plain value transfers
   * prints the balance of every involved account after each meaningful change,
-    plus relevant state variables (collateralPct, compensationPool, loan states)
-  * uses the REAL oracle: it calls requestUpdate and waits for the daemon to push
+    plus relevant state variables (collateral_percent, compensation_pool, loan states)
+  * uses the REAL oracle: it calls request_update and waits for the daemon to push
   * leaves contributors[0]'s approve votes to the auto-voter bot; the demo casts
     the other contributors' votes explicitly
 
-Assumption (oracle wait): after requestUpdate the demo polls getBalance with a
+Assumption (oracle wait): after request_update the demo polls get_balance with a
 timeout and errors clearly if the daemon never pushes — so a missing/idle daemon
 fails loudly instead of hanging. The daemon's snapshot must contain BTC_GOOD with
 a positive balance (1A1zP1… , the genesis coinbase, is within the first 131000
@@ -121,7 +121,7 @@ def mine(n):
 
 
 def mine_until_failed(loan):
-    while not loan.functions.isFailed().call():
+    while not loan.functions.is_failed().call():
         mine(2)
 
 
@@ -142,8 +142,8 @@ def create_funded_account(eth_amount, name):
 
 # ── oracle interaction (real daemon) ────────────────────────────────────────────
 def request_oracle(applicant, btc):
-    fee = ORACLE.functions.minimumFee().call()
-    send(applicant, ORACLE.functions.requestUpdate(btc), value=fee)
+    fee = ORACLE.functions.minimum_fee().call()
+    send(applicant, ORACLE.functions.request_update(btc), value=fee)
     print(f"   {label(applicant)} requested an oracle update for {btc} (fee {fee} wei)")
 
 
@@ -151,7 +151,7 @@ def wait_for_oracle(btc, timeout=90):
     print(f"   waiting for the oracle daemon to push a balance for {btc} …")
     deadline = time.time() + timeout
     while time.time() < deadline:
-        bal = ORACLE.functions.getBalance(btc).call()
+        bal = ORACLE.functions.get_balance(btc).call()
         if bal > 0:
             print(f"   daemon pushed {bal} sat (~{bal*30//100_000_000} ETH equiv)")
             return bal
@@ -192,8 +192,8 @@ def snapshot(title=None, involved=None):
         print(f"     {name:8} wallet={eth(c.address):8.3f}  deposited={dep}  locked={lck}")
     for a in (involved or []):
         print(f"     {label(a):8} wallet={eth(a.address):8.3f}  (applicant)")
-    print(f"     pool: collateralPct={SERVICE.functions.collateralPct().call()}  "
-          f"compensationPool={w3.from_wei(SERVICE.functions.compensationPool().call(),'ether')} ETH")
+    print(f"     pool: collateral_percent={SERVICE.functions.collateral_percent().call()}  "
+          f"compensation_pool={w3.from_wei(SERVICE.functions.compensation_pool().call(),'ether')} ETH")
 
 
 def status_table():
@@ -201,8 +201,8 @@ def status_table():
     print("   ┌─ loans ─────────────────────────────")
     for name, loan in loans.items():
         s = loan.functions.successful().call()
-        fm = loan.functions.failedMarked().call()
-        exp = loan.functions.isFailed().call()
+        fm = loan.functions.failed_marked().call()
+        exp = loan.functions.is_failed().call()
         state = "SUCCESSFUL" if s else ("FAILED (compensated)" if fm else
                                         ("expired, unpaid" if exp else "ACTIVE"))
         if state == "ACTIVE":
@@ -214,12 +214,12 @@ def status_table():
 # ── reason diagnostics ───────────────────────────────────────────────────────────
 def eth_equiv_of(btc) -> int:
     """ETH-equivalent (in wei) the contract computes for this address's balance."""
-    sats = ORACLE.functions.getBalance(btc).call()
+    sats = ORACLE.functions.get_balance(btc).call()
     return sats * 30 * 10**18 // 100_000_000   # sats * BTC_ETH_RATE * 1e18 / SATOSHIS_PER_BTC
 
 
 def rejection_reason(amount_wei, btc) -> str:
-    """Reproduce resolveProposal's checks (in the same order) to name the reason."""
+    """Reproduce resolve_proposal's checks (in the same order) to name the reason."""
     cum = sum(SERVICE.functions.deposited(c.address).call() - SERVICE.functions.locked(c.address).call()
               for c, _ in contributors_now())
     if cum < amount_wei:
@@ -233,10 +233,10 @@ def rejection_reason(amount_wei, btc) -> str:
 
 
 def failure_reason(loan) -> str:
-    principal = loan.functions.principal().call()
-    repaid = loan.functions.totalBaseRepaid().call()
+    lent_amount = loan.functions.lent_amount().call()
+    repaid = loan.functions.total_base_repaid().call()
     return (f"expired without full repayment — base repaid "
-            f"{w3.from_wei(repaid,'ether')} of {w3.from_wei(principal,'ether')} ETH principal")
+            f"{w3.from_wei(repaid,'ether')} of {w3.from_wei(lent_amount,'ether')} ETH lent_amount")
 
 
 # ── voting (bot covers C0; demo casts the rest) ──────────────────────────────────
@@ -249,18 +249,18 @@ def vote_others(pid, approve=True):
 
 
 def open_loan(name, applicant, amount, rate, duration, btc=BTC_GOOD, approve=True):
-    pid = SERVICE.functions.nextProposalId().call()
-    send(applicant, SERVICE.functions.submitProposal(wei(amount), rate, duration, btc))
+    pid = SERVICE.functions.next_proposal_id().call()
+    send(applicant, SERVICE.functions.submit_proposal(wei(amount), rate, duration, btc))
     print(f"   proposal #{pid} submitted by {label(applicant)} "
           f"(amount={amount}, rate={rate}%, dur={duration}, btc={btc})")
     vote_others(pid, approve=approve)
     mine(13)
-    rc = send(applicant, SERVICE.functions.resolveProposal(pid))
-    ev = SERVICE.events.ProposalResolved().process_receipt(rc)[0]["args"]
+    rc = send(applicant, SERVICE.functions.resolve_proposal(pid))
+    ev = SERVICE.events.proposal_resolved().process_receipt(rc)[0]["args"]
     approved = ev["approved"]
     if approved:
         print(f"   proposal #{pid} resolved -> APPROVED")
-        loans[name] = loan_at(ev["loanContract"])
+        loans[name] = loan_at(ev["loan_contract"])
         status_table()
         return loans[name]
     # explain WHY it was rejected by reproducing the contract's checks
@@ -270,9 +270,9 @@ def open_loan(name, applicant, amount, rate, duration, btc=BTC_GOOD, approve=Tru
 
 def claim(contributor, name, cname):
     loan = loans[name]
-    before = w3.from_wei(loan.functions.remainingDue(contributor.address).call(), "ether")
-    send(contributor, SERVICE.functions.claimCompensation(loan.address))
-    after = w3.from_wei(loan.functions.remainingDue(contributor.address).call(), "ether")
+    before = w3.from_wei(loan.functions.remaining_due(contributor.address).call(), "ether")
+    send(contributor, SERVICE.functions.claim_compensation(loan.address))
+    after = w3.from_wei(loan.functions.remaining_due(contributor.address).call(), "ether")
     print(f"   {cname} claimed compensation on {name}: owed {before} -> {after} ETH")
 
 
@@ -330,7 +330,7 @@ def main():
 
     # rejection #4 — Bitcoin liquidity with a REAL but insufficient balance (BTC_LOW)
     banner("TIMELINE — rejection #4: real BTC balance exists but is too low for the amount")
-    open_loan("R-btc-low", applicants[3], 10_000, 10, 1000, btc=BTC_LOW)
+    open_loan("R-btc-low", applicants[3], 10, 10, 1000, btc=BTC_LOW)
 
     banner("TIMELINE — L2 finishes early (SUCCESSFUL) while L0/L1/L3 still run")
     send(applicants[2], loans["L2(app2)"].functions.repay(), value=owed_total(4, 100) - wei(1))
@@ -357,7 +357,7 @@ def main():
     # it must NOT become successful — demonstrates the 'failed can never succeed' rule
     send(AF, loans["L3(appF)"].functions.repay(), value=owed_total(3, 10))
     print(f"   L3 repaid in full after failure — successful={loans['L3(appF)'].functions.successful().call()} "
-          f"(stays failed), failedMarked={loans['L3(appF)'].functions.failedMarked().call()}")
+          f"(stays failed), failed_marked={loans['L3(appF)'].functions.failed_marked().call()}")
     status_table()
 
     # if the alt-address loan opened, repay it fully now (a second SUCCESS, different address)

@@ -3,8 +3,8 @@
 # Off-chain responder for the Bitcoin liquidity oracle.
 #
 # Loads the UTXO balance snapshot produced by the scanner, then watches the
-# oracle contract for UpdateRequested events and pushes the corresponding
-# balance on-chain via pushBalance().
+# oracle contract for update_requested events and pushes the corresponding
+# balance on-chain via push_balance().
 #
 # Config (RPC, oracle address, owner key) is read from deployment.json, which
 # is produced by setup.py. deployer == owner == this daemon's signing account,
@@ -103,7 +103,7 @@ def save_last_block(b: int) -> None:
 # ── on-chain push ──────────────────────────────────────────────────────────────
 def push_balance(btc_addr_str: str, sats: int):
     nonce = w3.eth.get_transaction_count(owner.address)
-    tx = oracle.functions.pushBalance(
+    tx = oracle.functions.push_balance(
         btc_addr_str, sats
     ).build_transaction({
         "from": owner.address,
@@ -121,11 +121,11 @@ def push_balance(btc_addr_str: str, sats: int):
 def process_range(from_block: int, to_block: int) -> None:
     if from_block > to_block:
         return
-    events = oracle.events.UpdateRequested().get_logs(
+    events = oracle.events.update_requested().get_logs(
         from_block=from_block, to_block=to_block
     )
     for ev in events:
-        btc_bytes = ev["args"]["btcAddr"]                 # raw bytes (non-indexed)
+        btc_bytes = ev["args"]["BTC_addr"]                 # raw bytes (non-indexed)
         addr = btc_bytes
         sats = balances.get(addr, 0)                      # unknown address -> 0
         txh = push_balance(addr, sats)

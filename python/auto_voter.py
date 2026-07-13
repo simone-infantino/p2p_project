@@ -5,7 +5,7 @@ auto_voter.py — an automated contributor that APPROVES every new loan proposal
 This implements the spec's "automated strategy for a contributor that always
 votes to approve any new loan proposal (even if the vote may be irrelevant if
 the entirety of the contributor funds are locked in active loans)". It must
-"notice" new proposals: it watches the chain for ProposalSubmitted events and
+"notice" new proposals: it watches the chain for proposal_submitted events and
 fires an approve vote for each one — unconditionally, with no judgement.
 
 It plays contributors[0] from deployment.json (the demo deposits that account's
@@ -76,12 +76,12 @@ def approve(pid: int):
 
 def serve():
     last = load_checkpoint()
-    print(f"auto-voter {voter.address[:12]}… watching ProposalSubmitted from block {last}")
+    print(f"auto-voter {voter.address[:12]}… watching proposal_submitted from block {last}")
     while True:
         latest = w3.eth.block_number
         if latest >= last:
             try:
-                logs = service.events.ProposalSubmitted().get_logs(
+                logs = service.events.proposal_submitted().get_logs(
                     from_block=last, to_block=latest)
                 for ev in logs:
                     pid = ev["args"]["id"]

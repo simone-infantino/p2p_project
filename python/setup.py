@@ -10,7 +10,7 @@ Spec constraints honoured:
   * Prefunded genesis accounts are used ONLY to transfer value to fresh
     accounts. All contract deployments originate from fresh accounts.
   * BitcoinOracle is deployed FROM the oracle/daemon account, so that
-    owner == the account the daemon signs pushBalance() with.
+    owner == the account the daemon signs push_balance() with.
 
 Run AFTER `npx hardhat compile` (so the artifacts exist) and with geth running.
 """
@@ -36,7 +36,7 @@ FUND_ADMIN = 50
 FUND_CONTRIBUTOR = 100
 FUND_APPLICANT = 50
 
-# A representative BTC address (ASCII bytes) used only to estimate pushBalance gas.
+# A representative BTC address (ASCII bytes) used only to estimate push_balance gas.
 SAMPLE_BTC = 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
 
 w3 = Web3(Web3.HTTPProvider(RPC))
@@ -126,13 +126,13 @@ oracle_abi, oracle_bytecode = load_artifact("BitcoinOracle")
 oracle = deploy(oracle_acct, oracle_abi, oracle_bytecode, 1)  # placeholder fee
 print(f"  BitcoinOracle @ {oracle.address}")
 
-# ── 3. compute and set the spec minimum fee = gas(pushBalance) * 0.1 gwei ─────────
-gas = oracle.functions.pushBalance(SAMPLE_BTC, 5_000_000_000).estimate_gas(
+# ── 3. compute and set the spec minimum fee = gas(push_balance) * 0.1 gwei ─────────
+gas = oracle.functions.push_balance(SAMPLE_BTC, 5_000_000_000).estimate_gas(
     {"from": oracle_acct.address}
 )
 min_fee = gas * w3.to_wei("0.1", "gwei")
-send(oracle_acct, oracle.functions.setMinimumFee(min_fee))
-print(f"  pushBalance gas ~{gas}, minimumFee set to {min_fee} wei")
+send(oracle_acct, oracle.functions.set_minimum_fee(min_fee))
+print(f"  push_balance gas ~{gas}, minimum_fee set to {min_fee} wei")
 
 # ── 4. deploy LendingService FROM the admin account ──────────────────────────────
 print("deploying LendingService from the admin account ...")
@@ -148,7 +148,7 @@ deployment = {
         "address": oracle.address,
         "ownerAddress": oracle_acct.address,
         "ownerKey": w3.to_hex(oracle_acct.key),
-        "minimumFee": str(min_fee),
+        "minimum_fee": str(min_fee),
     },
     "lendingService": {
         "address": service.address,
