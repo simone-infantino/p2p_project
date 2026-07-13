@@ -64,8 +64,8 @@ export async function approveLoan(
 ) {
   const { oracle, service, alice, bob, applicant, publicClient } = ctx;
   const id = opts.id ?? 0n;
-  if (opts.pushBtc ?? true) await oracle.write.pushBalance([BTC, ONE_BTC_SATS]);
-  await service.write.submitProposal([opts.amount, opts.rate, opts.duration, BTC], {
+  if (opts.pushBtc ?? true) await oracle.write.push_balance([BTC, ONE_BTC_SATS]);
+  await service.write.submit_proposal([opts.amount, opts.rate, opts.duration, BTC], {
     account: applicant.account,
   });
   if (opts.votes ?? true) {
@@ -77,12 +77,12 @@ export async function approveLoan(
     }
   } 
   await networkHelpers.mine(13); // pass PROPOSAL_VOTING_PERIOD (12)
-  const hash = await service.write.resolveProposal([id], { account: applicant.account });
-  const logs = await eventsFrom(publicClient, service.abi, hash, "ProposalResolved");
+  const hash = await service.write.resolve_proposal([id], { account: applicant.account });
+  const logs = await eventsFrom(publicClient, service.abi, hash, "proposal_resolved");
   const approved = logs[0].args.approved as boolean;
-  const loanAddr = logs[0].args.loanContract as `0x${string}`;
-  const loan = approved ? await viem.getContractAt("Loan", loanAddr) : null;
-  return { approved, loanAddr, loan };
+  const loan_addr = logs[0].args.loan_contract as `0x${string}`;
+  const loan = approved ? await viem.getContractAt("Loan", loan_addr) : null;
+  return { approved, loan_addr, loan };
 }
 
 /** Total owed on a loan under the proportional split = principal * (100 + rate) / 100. */

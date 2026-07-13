@@ -3,387 +3,388 @@ pragma solidity ^0.8.28;
 
 import "./Loan.sol";
 
-interface IOracle {
-    function getBalance(string calldata btcAddr) external view returns (uint256);
+interface Oracle_Interface {
+    function get_balance(string calldata BTC_addr) external view returns (uint256);
 }
 
-contract LendingServiceVulnerable is ILendingServiceCallback {
-    // ---- constants ----
+contract LendingServiceVulnerable is Loan_Service_Interface {
     uint256 public constant MIN_DEPOSIT = 100_000 wei;
     uint256 public constant PROPOSAL_VOTING_PERIOD = 12;
-    uint256 public constant BTC_ETH_RATE = 30;   // 1 BTC = 30 ETH
+    uint256 public constant BTC_ETH_RATE = 30;
     uint256 public constant SATOSHIS_PER_BTC = 1e8;
     
-    // ---- admin / upgradability hook ----
     address public admin;
-    address public pendingAdmin;
-    address public successor;        // set when migrating to a new version
+    address public pending_admin;
+    address public successor;
     bool    public terminated;
     
-    // ---- funding pool ----
-    mapping(address => uint256) public deposited;     // total deposited
-    mapping(address => uint256) public locked;        // currently locked in active loans
-    address[] public contributorList;
-    mapping(address => bool) public isContributor;
-    mapping(address => uint256) private contributorIndex;
-    uint256 public totalDeposited;
-    uint256 public totalLocked;
+    mapping(address => uint256) public deposited;
+    mapping(address => uint256) public locked;
+    address[] public contributor_list;
+    mapping(address => bool) public is_contributor;
+    mapping(address => uint256) private contributor_index;
+    uint256 public total_deposited;
+    uint256 public total_locked;
     
-    // ---- compensation pool ----
-    uint256 public compensationPool;
+    uint256 public compensation_pool;
     
-    // ---- collateral percentage ----
-    uint8 public collateralPct = 50;
+    uint8 public collateral_percent = 50;
     
-    // ---- oracle ----
-    IOracle public oracle;
+    Oracle_Interface public oracle;
     
-    // ---- proposals ----
     enum Vote { None, Approve, Reject }
     struct Proposal {
         address applicant;
         uint256 amount;
-        uint8   interestRate;
+        uint8   interest_rate;
         uint256 duration;
-        string   btcAddress;
-        uint256 startBlock;
+        string   loan_BTC_address;
+        uint256 loan_start_block;
         bool    closed;
         bool    approved;
         mapping(address => Vote) votes;
     }
-    uint256 public nextProposalId;
+    uint256 public next_proposal_id;
     mapping(uint256 => Proposal) private proposals;
     
-    // ---- loans ----
-    mapping(address => bool) public isActiveLoan; // contract address => active
+    mapping(address => bool) public active_loan;
     mapping(address => address[]) public loansByApplicant;
     
-    // ---- events ----
-    event Deposited(address indexed who, uint256 amount);
-    event Withdrawn(address indexed who, uint256 amount);
-    event ProposalSubmitted(uint256 indexed id, address indexed applicant, uint256 amount, uint8 interestRate, uint256 duration, string btcAddress);
+    event Deposited(address indexed contributor, uint256 amount);
+    event Withdrawn(address indexed contributor, uint256 amount);
+    event proposal_submitted(uint256 indexed id, address indexed applicant, uint256 amount, uint8 interest_rate, uint256 duration, string loan_BTC_address);
     event Voted(uint256 indexed id, address indexed voter, Vote vote);
-    event ProposalResolved(uint256 indexed id, bool approved, address loanContract);
-    event CompensationClaimed(address indexed contributor, address indexed loan, uint256 amount);
-    event ServiceTerminated(address indexed successor);
-    event OracleUpdated(address indexed previousOracle, address indexed newOracle);
-    event AdminTransferStarted(address indexed currentAdmin, address indexed pendingAdmin);
-    event AdminTransferred(address indexed previousAdmin, address indexed newAdmin);
+    event proposal_resolved(uint256 indexed id, bool approved, address loan_contract);
+    event compensation_claimed(address indexed contributor, address indexed loan, uint256 amount);
+    event service_terminated(address indexed successor);
+    event oracle_updated(address indexed previous_oracle, address indexed new_oracle);
+    event admin_transfer_start(address indexed current_admin, address indexed pending_admin);
+    event admin_transfer_complete(address indexed previous_admin, address indexed new_admin);
     
-    modifier onlyAdmin()  { require(msg.sender == admin, "not admin"); _; }
-    modifier notTerminated() { require(!terminated, "terminated"); _; }
+    modifier only_admin()  { require(msg.sender == admin, "not admin"); _; }
+    modifier not_terminated() { require(!terminated, "terminated"); _; }
     
     constructor(address _oracle) {
         admin = msg.sender;
-        oracle = IOracle(_oracle);
+        oracle = Oracle_Interface(_oracle);
     }
     
-    // ============ contributor operations ============
     
-    function deposit() external payable notTerminated {
+    function deposit() external payable not_terminated {
         require(msg.value >= MIN_DEPOSIT, "below min deposit");
-        if (!isContributor[msg.sender]) {
-            isContributor[msg.sender] = true;
-            contributorIndex[msg.sender] = contributorList.length; // index before push
-            contributorList.push(msg.sender);
+
+        if (!is_contributor[msg.sender]) {
+            is_contributor[msg.sender] = true;
+            contributor_index[msg.sender] = contributor_list.length;
+            contributor_list.push(msg.sender);
         }
         deposited[msg.sender] += msg.value;
-        totalDeposited += msg.value;
+        total_deposited += msg.value;
+
         emit Deposited(msg.sender, msg.value);
     }
     
-    function withdraw(uint256 amount) external notTerminated {
-        uint256 disposable = _disposable(msg.sender);
+    function withdraw(uint256 amount) external not_terminated {
+        uint256 disposable = disposable_calculation(msg.sender);
         require(amount <= disposable, "exceeds disposable");
 
         deposited[msg.sender] -= amount;
-        totalDeposited -= amount;
+        total_deposited -= amount;
 
         if (deposited[msg.sender] == 0 && locked[msg.sender] == 0) {
-            _removeContributor(msg.sender);
+            remove_contributor(msg.sender);
         }
 
 
         (bool ok, ) = msg.sender.call{value: amount}("");
         require(ok, "transfer failed");
+
         emit Withdrawn(msg.sender, amount);
     }
     
-    function vote(uint256 proposalId, bool approve) external notTerminated {
-        Proposal storage p = proposals[proposalId];
+    function vote(uint256 proposal_id, bool approve) external not_terminated {
+        Proposal storage p = proposals[proposal_id];
+
         require(p.applicant != address(0), "no proposal");
         require(!p.closed, "closed");
-        require(block.number <= p.startBlock + PROPOSAL_VOTING_PERIOD, "voting window closed");
+        require(block.number <= p.loan_start_block + PROPOSAL_VOTING_PERIOD, "voting window closed");
         require(deposited[msg.sender] > 0, "not a contributor");
+
         p.votes[msg.sender] = approve ? Vote.Approve : Vote.Reject;
-        emit Voted(proposalId, msg.sender, p.votes[msg.sender]);
+
+        emit Voted(proposal_id, msg.sender, p.votes[msg.sender]);
     }
     
-    function claimCompensation(address payable loanAddr) external notTerminated {
-        Loan loan = Loan(loanAddr);
-        require(loan.isFailed(), "loan not failed");
-        uint256 stillOwed = loan.remainingDue(msg.sender);
-        require(stillOwed > 0, "nothing owed");
-        if (!loan.failedMarked()) {
-            loan.markFailed();
-            _onLoanOutcome(false);
-        }
-        uint256 give = stillOwed > compensationPool ? compensationPool : stillOwed;
-        require(give > 0, "compensation pool empty");
+    // function claim_compensation(address loan_addr) external not_terminated {
+    //     Loan loan = Loan(loan_addr);
+
+    //     require(loan.is_failed(), "loan not failed");
+    //     uint256 still_owed = loan.remaining_due(msg.sender);
+    //     require(still_owed > 0, "nothing owed");
+
+    //     if (!loan.failed_marked()) {
+    //         loan.mark_failed();
+    //         loan_outcome(false);
+    //     }
+
+    //     uint256 compensation = still_owed > compensation_pool ? compensation_pool : still_owed;
+    //     require(compensation > 0, "compensation pool empty");
     
-        (bool ok, ) = msg.sender.call{value: give}("");
+    //     (bool ok, ) = msg.sender.call{value: compensation}("");
+    //     require(ok, "transfer failed");
+    
+    //     compensation_pool -= compensation;
+    //     locked[msg.sender] -= compensation;
+    //     total_locked -= compensation;
+    //     deposited[msg.sender] -= compensation;
+    //     total_deposited -= compensation;
+
+    //     if (deposited[msg.sender] == 0 && locked[msg.sender] == 0) {
+    //         remove_contributor(msg.sender);
+    //     }
+
+    //     loan.apply_compensation(msg.sender, compensation);
+
+    //     emit compensation_claimed(msg.sender, loan_addr, compensation);
+    // }
+    function claim_compensation(address loan_addr) external not_terminated {
+        Loan loan = Loan(loan_addr);
+
+        require(loan.is_failed(), "loan not failed");
+        uint256 still_owed = loan.remaining_due(msg.sender);
+        require(still_owed > 0, "nothing owed");
+
+        if (!loan.failed_marked()) {
+            loan.mark_failed();
+            loan_outcome(false);
+        }
+        uint256 compensation = still_owed > compensation_pool ? compensation_pool : still_owed;
+        require(compensation > 0, "compensation pool empty");
+
+        (bool ok, ) = msg.sender.call{value: compensation}("");
         require(ok, "transfer failed");
-    
-        // ── effects, now too late (identical to the safe version, just moved down) ──
-        compensationPool -= give;
-        locked[msg.sender] -= give;
-        totalLocked -= give;
-        deposited[msg.sender] -= give;
-        totalDeposited -= give;
-        if (deposited[msg.sender] == 0 && locked[msg.sender] == 0) {
-            _removeContributor(msg.sender);
-        }
-        loan.applyCompensation(msg.sender, give);
-        emit CompensationClaimed(msg.sender, loanAddr, give);
+        
+        compensation_pool -= compensation;
     }
-    
-    // ============ applicant operations ============
-    
-    function submitProposal(uint256 amount, uint8 interestRate, uint256 duration, string calldata btcAddress) external notTerminated returns (uint256 id) {
-        require(interestRate >= 1 && interestRate <= 100, "rate out of range");
+        
+    function submit_proposal(uint256 amount, uint8 interest_rate, uint256 duration, string calldata loan_BTC_address) external not_terminated returns (uint256 id) {
+        require(interest_rate >= 1 && interest_rate <= 100, "rate out of range");
         require(amount > 0 && duration > 0, "bad params");
-        id = nextProposalId++;
+
+        id = next_proposal_id++;
         Proposal storage p = proposals[id];
         p.applicant    = msg.sender;
         p.amount       = amount;
-        p.interestRate = interestRate;
+        p.interest_rate = interest_rate;
         p.duration     = duration;
-        p.btcAddress   = btcAddress;
-        p.startBlock   = block.number;
-        emit ProposalSubmitted(id, msg.sender, amount, interestRate, duration, btcAddress);
+        p.loan_BTC_address   = loan_BTC_address;
+        p.loan_start_block   = block.number;
+
+        emit proposal_submitted(id, msg.sender, amount, interest_rate, duration, loan_BTC_address);
         return id;
     }
     
-    function resolveProposal(uint256 id) external notTerminated {
-    Proposal storage p = proposals[id];
-    require(p.applicant == msg.sender, "not applicant");
-    require(!p.closed, "closed");
-    require(block.number > p.startBlock + PROPOSAL_VOTING_PERIOD, "too early");
+    function resolve_proposal(uint256 id) external not_terminated {
+        Proposal storage p = proposals[id];
 
-    uint256 cumDisposable = _cumulativeDisposable();
+        require(p.applicant == msg.sender, "not applicant");
+        require(!p.closed, "closed");
+        require(block.number > p.loan_start_block + PROPOSAL_VOTING_PERIOD, "too early");
 
-    // reject paths: insufficient pool OR failed liquidity check
-    if (cumDisposable < p.amount || !_passesLiquidity(p.btcAddress, p.amount)) {
-        p.closed = true;
-        emit ProposalResolved(id, false, address(0));
-        return;
-    }
+        uint256 tot_disposable = total_disposable();
 
-    // weighted vote (non-voters count as reject via cumDisposable)
-    uint256 approveWeight = _approveWeight(p);
-    if (approveWeight <= cumDisposable - approveWeight) {
-        p.closed = true;
-        emit ProposalResolved(id, false, address(0));
-        return;
-    }
-
-    // approved
-    address loanAddr = _createLoan(p, cumDisposable);
-    p.closed = true;
-    p.approved = true;
-    emit ProposalResolved(id, true, loanAddr);
-}
-
-function _cumulativeDisposable() internal view returns (uint256 total) {
-    uint256 n = contributorList.length;
-    for (uint256 i = 0; i < n; ++i) {
-        total += _disposable(contributorList[i]);
-    }
-    return total;
-}
-
-function _passesLiquidity(string storage btcAddr, uint256 amount) internal view returns (bool){
-    uint256 sats = oracle.getBalance(btcAddr);
-    uint256 ethEquiv = (sats * BTC_ETH_RATE * 1 ether) / SATOSHIS_PER_BTC;
-    return ethEquiv >= amount;
-}
-
-function _approveWeight(Proposal storage p) internal view returns (uint256 weight){
-    uint256 n = contributorList.length;
-    for (uint256 i = 0; i < n; ++i) {
-        address c = contributorList[i];
-        if (p.votes[c] == Vote.Approve) {
-            weight += _disposable(c);
+        if (tot_disposable < p.amount || !liquidity_check(p.loan_BTC_address, p.amount)) {
+            p.closed = true;
+            emit proposal_resolved(id, false, address(0));
+            return;
         }
+
+        uint256 approve_weight = weight_calculation(p);
+
+        if (approve_weight <= tot_disposable - approve_weight) {
+            p.closed = true;
+            emit proposal_resolved(id, false, address(0));
+            return;
+        }
+
+        address loan_addr = create_loan(p, tot_disposable);
+        p.closed = true;
+        p.approved = true;
+
+        emit proposal_resolved(id, true, loan_addr);
     }
-    return weight;
-}
 
-function _createLoan(Proposal storage p, uint256 cumDisposable) internal returns (address){
-    (address[] memory sorted, uint256[] memory amounts, uint256 actualPrincipal)
-        = _lockProportional(p.amount, cumDisposable);
+    function total_disposable() internal view returns (uint256 total) {
+        uint256 n = contributor_list.length;
+        for (uint256 i = 0; i < n; ++i) {
+            total += disposable_calculation(contributor_list[i]);
+        }
+        return total;
+    }
 
-    Loan loan = (new Loan){value: actualPrincipal}(
-        p.applicant, actualPrincipal, p.interestRate, p.duration,
-        collateralPct, sorted, amounts
-    );
-    isActiveLoan[address(loan)] = true;
-    loansByApplicant[p.applicant].push(address(loan));
-    return address(loan);
-}
+    function liquidity_check(string storage BTC_addr, uint256 amount) internal view returns (bool) {
+        uint256 sats = oracle.get_balance(BTC_addr);
+        uint256 eth_converted = (sats * BTC_ETH_RATE * 1 ether) / SATOSHIS_PER_BTC;
+        return eth_converted >= amount;
+    }
+
+    function weight_calculation(Proposal storage p) internal view returns (uint256 weight) {
+        uint256 n = contributor_list.length;
+        for (uint256 i = 0; i < n; ++i) {
+            address c = contributor_list[i];
+            if (p.votes[c] == Vote.Approve) {
+                weight += disposable_calculation(c);
+            }
+        }
+        return weight;
+    }
+
+    function create_loan(Proposal storage p, uint256 tot_disposable) internal returns (address) {
+        (address[] memory sorted, uint256[] memory amounts, uint256 actual_lent_value)
+            = lock_proportional(p.amount, tot_disposable);
+
+        Loan loan = (new Loan){value: actual_lent_value}(
+            p.applicant, actual_lent_value, p.interest_rate, p.duration,
+            collateral_percent, sorted, amounts
+        );
+        active_loan[address(loan)] = true;
+        loansByApplicant[p.applicant].push(address(loan));
+        return address(loan);
+    }
     
-    // ============ helpers ============
     
-    function _disposable(address c) internal view returns (uint256) {
+    function disposable_calculation(address c) internal view returns (uint256) {
         return deposited[c] - locked[c];
     }
     
-    function _lockProportional(uint256 amount, uint256 cumDisposable) internal
-    returns (address[] memory sorted, uint256[] memory amounts, uint256 actualPrincipal){
-        uint256 n = contributorList.length;
+    function lock_proportional(uint256 amount, uint256 tot_disposable) internal returns (address[] memory sorted, uint256[] memory amounts, uint256 actual_lent_value) {
+        uint256 n = contributor_list.length;
         address[] memory active = new address[](n);
         uint256[] memory locks  = new uint256[](n);
-        uint256 cnt = 0;
-        uint256 sumLocked = 0;
+        uint256 count = 0;
+        uint256 will_lock = 0;
         
         for (uint256 i = 0; i < n; ++i) {
-            address c = contributorList[i];
-            uint256 d = _disposable(c);
+            address c = contributor_list[i];
+            uint256 d = disposable_calculation(c);
             if (d == 0) continue;
-            uint256 take = (amount * d) / cumDisposable; // integer division -> discrepancy
-            if (take == 0) continue;
-            active[cnt] = c;
-            locks[cnt]  = take;
-            cnt++;
-            sumLocked += take;
-            locked[c] += take;
+            uint256 will_loan = (amount * d) / tot_disposable;
+            if (will_loan == 0) continue;
+            active[count] = c;
+            locks[count]  = will_loan;
+            count++;
+            will_lock += will_loan;
+            locked[c] += will_loan;
         }
-        totalLocked += sumLocked;
-        actualPrincipal = sumLocked; // discrepancy absorbed: applicant receives the actual sum
-        
-        // sort active[0..cnt) by locks desc, address asc — selection sort (gas-expensive but ok for exercise)
-        sorted  = new address[](cnt);
-        amounts = new uint256[](cnt);
-        bool[] memory used = new bool[](cnt);
-        for (uint256 i = 0; i < cnt; ++i) {
-            uint256 bestIdx = type(uint256).max;
-            for (uint256 j = 0; j < cnt; ++j) {
-                if (used[j]) continue;
-                if (bestIdx == type(uint256).max) { bestIdx = j; continue; }
-                if (locks[j] > locks[bestIdx]) bestIdx = j;
-                else if (locks[j] == locks[bestIdx] && active[j] < active[bestIdx]) bestIdx = j;
+        total_locked += will_lock;
+        actual_lent_value = will_lock;
+
+        for (uint256 i = 1; i < count; ++i) {
+            address a_key = active[i];
+            uint256 l_key = locks[i];
+            uint256 j = i;
+            // shift entries that should come AFTER (a_key,l_key) one slot right
+            while (j > 0 && (locks[j-1] < l_key || (locks[j-1] == l_key && active[j-1] > a_key))) {
+                active[j] = active[j-1];
+                locks[j]  = locks[j-1];
+                j--;
             }
-            used[bestIdx] = true;
-            sorted[i]  = active[bestIdx];
-            amounts[i] = locks[bestIdx];
+            active[j] = a_key;
+            locks[j]  = l_key;
         }
-
-        // after you've filled active[0..cnt) and locks[0..cnt) in the first loop:
-        // for (uint256 i = 1; i < cnt; ++i) {
-            // address aKey = active[i];
-            // uint256 lKey = locks[i];
-            // uint256 j = i;
-            // shift larger-or-tied-with-higher-address entries one slot right
-            // while (j > 0 && _comesBefore(locks[j - 1], active[j - 1], lKey, aKey) == false) {
-                // active[j] = active[j - 1];
-                // locks[j]  = locks[j - 1];
-                // --j;
-            // }
-            // active[j] = aKey;
-            // locks[j]  = lKey;
-        // }  
+        // then sorted/amounts = active/locks (already ordered)
+        sorted  = new address[](count);
+        amounts = new uint256[](count);
+        for (uint256 i = 0; i < count; ++i) { sorted[i] = active[i]; amounts[i] = locks[i]; }
     }
-
-    // true if (lockA, addrA) should come before (lockB, addrB):
-    // higher lock first; tie -> lower address first
-    // function _comesBefore(uint256 lockA, address addrA, uint256 lockB, address addrB)
-        // internal pure returns (bool)
-    // {
-        // if (lockA != lockB) return lockA > lockB;
-        // return addrA < addrB;
-    // }    
     
-    function _onLoanOutcome(bool success) internal {
+    function loan_outcome(bool success) internal {
         if (success) {
-            if (collateralPct > 5) collateralPct -= 5;
-            else collateralPct = 1;
+            if (collateral_percent > 5) collateral_percent -= 5;
+            else collateral_percent = 1;
         } else {
-            if (collateralPct < 95) collateralPct += 5;
-            else collateralPct = 100;
+            if (collateral_percent < 95) collateral_percent += 5;
+            else collateral_percent = 100;
         }
     }
 
 
-    function _removeContributor(address who) internal {
-        isContributor[who] = false;
+    function remove_contributor(address contributor) internal {
+        is_contributor[contributor] = false;
 
-        uint256 idx = contributorIndex[who];
-        uint256 lastIdx = contributorList.length - 1;
+        uint256 index = contributor_index[contributor];
+        uint256 last = contributor_list.length - 1;
 
-        if (idx != lastIdx) {
-            address lastAddr = contributorList[lastIdx];
-            contributorList[idx] = lastAddr;       // move last element into the gap
-            contributorIndex[lastAddr] = idx;      // update the moved element's index
+        if (index != last) {
+            address lastAddr = contributor_list[last];
+            contributor_list[index] = lastAddr;
+            contributor_index[lastAddr] = index;
         }
-        contributorList.pop();                     // drop the now-duplicate tail
-        delete contributorIndex[who];
+        contributor_list.pop();
+        delete contributor_index[contributor];
+    }
+        
+    function loan_refund(address contributor, uint256 repaid_base_amount) external payable override {
+        require(active_loan[msg.sender], "not a known loan");
+        require(msg.value == repaid_base_amount, "amount mismatch");
+
+        locked[contributor] -= repaid_base_amount;
+        total_locked -= repaid_base_amount;
     }
     
-    // ============ callbacks invoked by Loan contracts ============
-    
-    function onLoanRefund(address contributor, uint256 baseAmount) external payable override {
-        require(isActiveLoan[msg.sender], "not a known loan");
-        require(msg.value == baseAmount, "amount mismatch");
-        locked[contributor] -= baseAmount;
-        totalLocked -= baseAmount;
-        // deposited stays the same: the contributor's funding-pool position is restored
+    function loan_collateral() external payable override {
+        require(active_loan[msg.sender], "not a known loan");
+
+        compensation_pool += msg.value;
     }
     
-    function onLoanInterestCollateral() external payable override {
-        require(isActiveLoan[msg.sender], "not a known loan");
-        compensationPool += msg.value;
+    function loan_success() external override {
+        require(active_loan[msg.sender], "not a known loan");
+
+        active_loan[msg.sender] = false;
+        loan_outcome(true);
     }
+        
+    function set_successor(address _successor) external only_admin { successor = _successor; }
     
-    function onLoanSuccessful() external override {
-        require(isActiveLoan[msg.sender], "not a known loan");
-        isActiveLoan[msg.sender] = false;
-        _onLoanOutcome(true);
-    }
-    
-    // ============ admin / upgradability ============
-    
-    function setSuccessor(address _successor) external onlyAdmin { successor = _successor; }
-    
-    function terminate() external onlyAdmin {
+    function terminate() external only_admin {
         require(successor != address(0), "no successor");
-        require(totalLocked == 0, "loans still active");
+        require(total_locked == 0, "loans still active");
+
         terminated = true;
-        // migrate ETH balance to successor
         uint256 bal = address(this).balance;
         (bool ok, ) = successor.call{value: bal}("");
+
         require(ok, "migration transfer failed");
-        emit ServiceTerminated(successor);
+
+        emit service_terminated(successor);
     }
 
-    function setOracle(address newOracle) external onlyAdmin {
-        require(newOracle != address(0), "zero address");
+    function set_oracle(address new_oracle) external only_admin {
+        require(new_oracle != address(0), "zero address");
+
         address previous = address(oracle);
-        oracle = IOracle(newOracle);
-        emit OracleUpdated(previous, newOracle);
+        oracle = Oracle_Interface(new_oracle);
+
+        emit oracle_updated(previous, new_oracle);
     }
 
-    function transferAdmin(address newAdmin) external onlyAdmin {
-        require(newAdmin != address(0), "zero address");
-        pendingAdmin = newAdmin;
-        emit AdminTransferStarted(admin, newAdmin);
+    function transfer_admin(address new_admin) external only_admin {
+        require(new_admin != address(0), "zero address");
+
+        pending_admin = new_admin;
+
+        emit admin_transfer_start(admin, new_admin);
     }
 
-    function acceptAdmin() external {
-        require(msg.sender == pendingAdmin, "not pending admin");
+    function accept_admin() external {
+        require(msg.sender == pending_admin, "not pending admin");
+
         address previous = admin;
-        admin = pendingAdmin;
-        pendingAdmin = address(0);
-        emit AdminTransferred(previous, admin);
+        admin = pending_admin;
+        pending_admin = address(0);
+        
+        emit admin_transfer_complete(previous, admin);
     }
     
     receive() external payable {}

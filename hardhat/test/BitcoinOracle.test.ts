@@ -16,65 +16,65 @@ async function deployOracle() {
 }
 
 describe("BitcoinOracle", () => {
-  it("constructor sets owner, minimumFee and deployed_block", async () => {
+  it("constructor sets owner, minimum_fee and deployed_block", async () => {
     const { oracle, owner, minFee } = await deployOracle();
     assert.equal((await oracle.read.owner()).toLowerCase(), owner.account.address.toLowerCase());
-    assert.equal(await oracle.read.minimumFee(), minFee);
+    assert.equal(await oracle.read.minimum_fee(), minFee);
     assert.ok((await oracle.read.deployed_block()) > 0n);
   });
 
-  it("requestUpdate reverts when the fee is below the minimum", async () => {
+  it("request_update reverts when the fee is below the minimum", async () => {
     const { oracle, alice, minFee } = await deployOracle();
     await assert.rejects(
-      oracle.write.requestUpdate([BTC], { account: alice.account, value: minFee -1n}),
+      oracle.write.request_update([BTC], { account: alice.account, value: minFee -1n}),
       /fee too low/
     );
   });
 
-  it("requestUpdate succeeds and emits UpdateRequested", async () => {
+  it("request_update succeeds and emits update_requested", async () => {
     const { oracle, alice, minFee, publicClient } = await deployOracle();
-    const hash = await oracle.write.requestUpdate([BTC], { account: alice.account, value: minFee });
-    const logs = await eventsFrom(publicClient, oracle.abi, hash, "UpdateRequested");
+    const hash = await oracle.write.request_update([BTC], { account: alice.account, value: minFee });
+    const logs = await eventsFrom(publicClient, oracle.abi, hash, "update_requested");
     assert.equal(logs.length, 1);
-    assert.equal(logs[0].args.btcAddr.toLowerCase(), BTC.toLowerCase());
+    assert.equal(logs[0].args.BTC_addr.toLowerCase(), BTC.toLowerCase());
     assert.equal(logs[0].args.fee, minFee); 
   });
 
-  it("pushBalance is restricted to the owner", async () => {
+  it("push_balance is restricted to the owner", async () => {
     const { oracle, alice } = await deployOracle();
     await assert.rejects(
-      oracle.write.pushBalance([BTC, 100n], { account: alice.account }),
+      oracle.write.push_balance([BTC, 100n], { account: alice.account }),
       /not oracle/
     );
   });
 
-  it("pushBalance stores the balance and emits BalanceUpdated", async () => {
+  it("push_balance stores the balance and emits balance_updated", async () => {
     const { oracle, publicClient } = await deployOracle();
-    const hash = await oracle.write.pushBalance([BTC, 12_345n]);
-    const logs = await eventsFrom(publicClient, oracle.abi, hash, "BalanceUpdated");
+    const hash = await oracle.write.push_balance([BTC, 12_345n]);
+    const logs = await eventsFrom(publicClient, oracle.abi, hash, "balance_updated");
     assert.equal(logs.length, 1);
     assert.equal(logs[0].args.satoshis, 12_345n);
-    assert.equal(await oracle.read.getBalance([BTC]), 12_345n);
+    assert.equal(await oracle.read.get_balance([BTC]), 12_345n);
   });
 
-  it("getBalance returns 0 for an unknown address", async () => {
+  it("get_balance returns 0 for an unknown address", async () => {
     const { oracle } = await deployOracle();
     const unknown = "1BoatSLRHtKNngkdXEeobR76b53LETtpyT";
-    assert.equal(await oracle.read.getBalance([unknown]), 0n);
+    assert.equal(await oracle.read.get_balance([unknown]), 0n);
   });
 
-  it("setMinimumFee is owner-only and updates the value", async () => {
+  it("set_minimum_fee is owner-only and updates the value", async () => {
     const { oracle, alice } = await deployOracle();
-    await assert.rejects(oracle.write.setMinimumFee([1n], { account: alice.account }), /not oracle/);
-    await oracle.write.setMinimumFee([999n]);
-    assert.equal(await oracle.read.minimumFee(), 999n);
+    await assert.rejects(oracle.write.set_minimum_fee([1n], { account: alice.account }), /not oracle/);
+    await oracle.write.set_minimum_fee([999n]);
+    assert.equal(await oracle.read.minimum_fee(), 999n);
   });
 
-  it("withdrawFees moves accumulated fees to the recipient", async () => {
+  it("withdraw_fees moves accumulated fees to the recipient", async () => {
     const { oracle, alice, bob, minFee, publicClient } = await deployOracle();
-    await oracle.write.requestUpdate([BTC], { account: alice.account, value: minFee });
+    await oracle.write.request_update([BTC], { account: alice.account, value: minFee });
     const before = await publicClient.getBalance({ address: bob.account.address });
-    await oracle.write.withdrawFees([bob.account.address]);
+    await oracle.write.withdraw_fees([bob.account.address]);
     const after = await publicClient.getBalance({ address: bob.account.address });
     assert.equal(after - before, minFee);
   });

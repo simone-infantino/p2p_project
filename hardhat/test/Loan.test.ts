@@ -10,7 +10,7 @@ import { parseEther } from "viem";
 import { deployService, fund, approveLoan, totalOwed, networkHelpers } from "./helpers.js";
 
 describe("Loan", () => {
-  it("stores its terms and forwards the principal to the applicant", async () => {
+  it("stores its terms and forwards the value to the applicant", async () => {
     const ctx = await deployService();
     const { applicant, publicClient } = ctx;
     await fund(ctx, parseEther("6"));
@@ -21,22 +21,22 @@ describe("Loan", () => {
 
     assert.ok(loan);
     assert.equal((await loan!.read.applicant()).toLowerCase(), applicant.account.address.toLowerCase());
-    assert.equal(await loan!.read.principal(), parseEther("5"));
-    assert.equal(await loan!.read.interestRate(), 10);
+    assert.equal(await loan!.read.lent_amount(), parseEther("5"));
+    assert.equal(await loan!.read.interest_rate(), 10);
     assert.ok(after > before); // received ~5 ETH, dwarfs the resolve gas
   });
 
   it("full repayment marks the loan successful and funds the compensation pool", async () => {
     const ctx = await deployService();
     await fund(ctx, parseEther("6"));
-    const { loan, loanAddr } = await approveLoan(ctx, { amount: parseEther("5"), rate: 10, duration: 100n });
+    const { loan, loan_addr } = await approveLoan(ctx, { amount: parseEther("5"), rate: 10, duration: 100n });
     assert.ok(loan);
 
     await loan!.write.repay({ account: ctx.applicant.account, value: totalOwed(parseEther("5"), 10) });
 
     assert.equal(await loan!.read.successful(), true);
-    assert.equal(await ctx.service.read.isActiveLoan([loanAddr]), false);
-    assert.ok((await ctx.service.read.compensationPool()) > 0n);
+    assert.equal(await ctx.service.read.active_loan([loan_addr]), false);
+    assert.ok((await ctx.service.read.compensation_pool()) > 0n);
   });
 
   it("a partial repayment pays base and interest without completing the loan", async () => {
@@ -47,10 +47,10 @@ describe("Loan", () => {
 
     await loan!.write.repay({ account: ctx.applicant.account, value: totalOwed(parseEther("5"), 10) / 2n });
 
-    assert.ok((await loan!.read.totalBaseRepaid()) > 0n);
-    assert.ok((await loan!.read.totalBaseRepaid()) < parseEther("5"));
+    assert.ok((await loan!.read.total_base_repaid()) > 0n);
+    assert.ok((await loan!.read.total_base_repaid()) < parseEther("5"));
     assert.equal(await loan!.read.successful(), false);
-    assert.ok((await ctx.service.read.compensationPool()) > 0n);
+    assert.ok((await ctx.service.read.compensation_pool()) > 0n);
   });
 
   it("becomes failed after expiration without full repayment", async () => {
@@ -60,8 +60,8 @@ describe("Loan", () => {
     assert.ok(loan);
 
     await networkHelpers.mine(5);
-    assert.equal(await loan!.read.isExpired(), true);
-    assert.equal(await loan!.read.isFailed(), true);
+    assert.equal(await loan!.read.is_expired(), true);
+    assert.equal(await loan!.read.is_failed(), true);
   });
 
   it("only the applicant may repay", async () => {

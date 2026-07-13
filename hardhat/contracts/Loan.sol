@@ -1,172 +1,162 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-interface ILendingServiceCallback {
-    function onLoanRefund(address contributor, uint256 baseAmount) external payable;
-    function onLoanInterestCollateral() external payable;
-    function onLoanSuccessful() external;
+interface Loan_Service_Interface {
+    function loan_refund(address contributor, uint256 repaid_base_amount) external payable;
+    function loan_collateral() external payable;
+    function loan_success() external;
 }
 
+//total owed = lent_amount * (100 + interest_rate) / 100
 contract Loan {
-    ILendingServiceCallback public immutable service;
+    Loan_Service_Interface public immutable service;
     address public immutable applicant;
-    uint256 public immutable principal;     // actual loaned amount (after discrepancy)
-    uint8   public immutable interestRate;  // 1..100, percent of principal
-    uint256 public immutable duration;      // in blocks
-    uint256 public immutable startBlock;
-    uint8   public immutable collateralPct; // snapshot at creation
+    uint256 public immutable lent_amount;       //actual lent amount (after rounding errors)
+    uint8   public immutable interest_rate;
+    uint256 public immutable duration;          //in blocks
+    uint256 public immutable loan_start_block;
+    uint8   public immutable collateral_percent;
 
-    // contributors sorted by initial locked DESC, address ASC (repayment refund order)
+    //contributors sorted by initial locked descending order, address ascending order
     address[] public contributors;
-    mapping(address => uint256) public initialLocked;
-    mapping(address => uint256) public remainingDue;        // base principal still owed back
+    mapping(address => uint256) public initial_locked;
+    mapping(address => uint256) public remaining_due;
 
-    uint256 public totalBaseRepaid;
+    uint256 public total_base_repaid;
     bool    public successful;
-    bool    public failedMarked;
+    bool    public failed_marked;
 
-    event Repaid(address indexed applicant, uint256 baseAmount, uint256 interestAmount);
-    event ContributorRefunded(address indexed contributor, uint256 amount);
-    event InterestGainPaid(address indexed contributor, uint256 amount);
-    event LoanSuccessful();
-    event LoanFailedMarked();
+    event repaid(address indexed applicant, uint256 repaid_base_amount, uint256 interestAmount);
+    event contributor_refunded(address indexed contributor, uint256 amount);
+    event paid_interest(address indexed contributor, uint256 amount);
+    event loan_successful();
+    event loan_failed_marked();
 
     constructor(
         address _applicant,
-        uint256 _principal,
-        uint8 _interestRate,
+        uint256 _lent_amount,
+        uint8 _interest_rate,
         uint256 _duration,
-        uint8 _collateralPct,
-        address[] memory _sortedContributors,
-        uint256[] memory _lockedAmounts
+        uint8 _collateral_percent,
+        address[] memory _sorted_contributors,
+        uint256[] memory _locked_amounts
     ) payable {
-        require(msg.value == _principal, "principal mismatch");
-        require(_sortedContributors.length == _lockedAmounts.length, "bad inputs");
-        service = ILendingServiceCallback(msg.sender);
+        require(msg.value == _lent_amount, "loan amount mismatch mismatch");
+        require(_sorted_contributors.length == _locked_amounts.length, "bad inputs");
+        service = Loan_Service_Interface(msg.sender);
         applicant = _applicant;
-        principal = _principal;
-        interestRate = _interestRate;
+        lent_amount = _lent_amount;
+        interest_rate = _interest_rate;
         duration = _duration;
-        startBlock = block.number;
-        collateralPct = _collateralPct;
+        loan_start_block = block.number;
+        collateral_percent = _collateral_percent;
 
-        for (uint256 i = 0; i < _sortedContributors.length; ++i) {
-            address c = _sortedContributors[i];
+        for (uint256 i = 0; i < _sorted_contributors.length; ++i) {
+            address c = _sorted_contributors[i];
             contributors.push(c);
-            initialLocked[c] = _lockedAmounts[i];
-            remainingDue[c]  = _lockedAmounts[i];
+            initial_locked[c] = _locked_amounts[i];
+            remaining_due[c]  = _locked_amounts[i];
         }
 
-        // forward principal to applicant
-        (bool ok, ) = _applicant.call{value: _principal}("");
+        //forward value to applicant
+        (bool ok, ) = _applicant.call{value: _lent_amount}("");
         require(ok, "applicant transfer failed");
     }
 
-    function expirationBlock() public view returns (uint256) { return startBlock + duration; }
-    function isExpired() public view returns (bool) { return block.number > expirationBlock(); }
-    function isFailed() public view returns (bool) {
-        return isExpired() && totalBaseRepaid < principal;
-    }
+    function expiration_block() public view returns (uint256) { return loan_start_block + duration; }
+    function is_expired() public view returns (bool) { return block.number > expiration_block(); }
+    function is_failed() public view returns (bool) { return is_expired() && total_base_repaid < lent_amount; }
 
-    /// Applicant repays (partial or full). Each payment is split into base and
-    /// interest PROPORTIONALLY, so interest accrues from the first installment.
+    //payment is split into base and interest (proportionally). Interest is again split in actual interest and collateral
     function repay() external payable {
         require(msg.sender == applicant, "only applicant");
         require(!successful, "already closed");
-        // A failed loan may still be repaid, but it can never become successful.
 
         uint256 payment = msg.value;
+        uint256 base = (payment * 100) / (100 + uint256(interest_rate));
+        uint256 interest = payment - base;
 
-        // Total owed = principal * (100 + interestRate) / 100, so every payment
-        // divides into base : interest = 100 : interestRate. This is the spec-aligned
-        // split: a partially repaid (and possibly failed) loan has paid some interest.
-        uint256 base = (payment * 100) / (100 + uint256(interestRate));
-        uint256 interest = payment - base; // remainder is interest (no precision dust loss)
-
-        // Cap base at the principal still outstanding; any base beyond the original
-        // loan amount is credited to the compensation pool (spec overflow rule).
-        uint256 outstandingBase = principal > totalBaseRepaid ? principal - totalBaseRepaid : 0;
-        if (base > outstandingBase) {
-            uint256 overflow = base - outstandingBase;
-            base = outstandingBase;
-            if (overflow > 0) service.onLoanInterestCollateral{value: overflow}();
+        uint256 due_total_left = lent_amount > total_base_repaid ? lent_amount - total_base_repaid : 0;
+        if (base > due_total_left) {
+            uint256 excess = base - due_total_left;
+            base = due_total_left;
+            if (excess > 0) service.loan_collateral{value: excess}();
         }
 
-        if (base > 0) _distributeBase(base);
-        if (interest > 0) _distributeInterest(interest);
+        if (base > 0) distribute_base(base);
+        if (interest > 0) distribute_interest(interest);
 
-        emit Repaid(applicant, base, interest);
+        emit repaid(applicant, base, interest);
 
-        // A loan that was marked failed can NEVER become successful, even if the
-        // applicant later repays it in full (spec requirement).
-        if (!failedMarked && totalBaseRepaid >= principal) {
+        //a failed loan may still be repaid, but it can never become successful.
+        if (!failed_marked && total_base_repaid >= lent_amount) {
             successful = true;
-            service.onLoanSuccessful();
-            emit LoanSuccessful();
+            service.loan_success();
+            emit loan_successful();
         }
     }
 
-    function _distributeBase(uint256 amount) internal {
-        totalBaseRepaid += amount;
+    function distribute_base(uint256 amount) internal {
+        total_base_repaid += amount;
         uint256 n = contributors.length;
-        // refund contributors in order, highest initial locked first
+        //refund contributors in order, highest initial locked first
         for (uint256 i = 0; i < n && amount > 0; ++i) {
             address c = contributors[i];
-            uint256 due = remainingDue[c];
+            uint256 due = remaining_due[c];
             if (due == 0) continue;
-            uint256 give = amount > due ? due : amount;
-            remainingDue[c] = due - give;
-            amount -= give;
-            service.onLoanRefund{value: give}(c, give);
-            emit ContributorRefunded(c, give);
+            uint256 base_repayment = amount > due ? due : amount;
+            remaining_due[c] = due - base_repayment;
+            amount -= base_repayment;
+            service.loan_refund{value: base_repayment}(c, base_repayment);
+            emit contributor_refunded(c, base_repayment);
         }
-        // Leftover base beyond what contributors are still owed (e.g. after a
-        // compensation forfeited part of their claim) goes to the compensation pool.
+        //leftover base beyond what contributors are still owed goes to the compensation pool. This could
+        //happen when a contributor calls for compensation (forfeiting its share of this repayment) and then the loan receives a repayment
         if (amount > 0) {
-            service.onLoanInterestCollateral{value: amount}();
+            service.loan_collateral{value: amount}();
         }
     }
 
-    function _distributeInterest(uint256 interest) internal {
-        uint256 collateral = (interest * collateralPct) / 100;
+    function distribute_interest(uint256 interest) internal {
+        uint256 collateral = (interest * collateral_percent) / 100;
         uint256 gain = interest - collateral;
 
-        // collateral -> compensation pool
-        if (collateral > 0) service.onLoanInterestCollateral{value: collateral}();
+        //collateral to compensation pool
+        if (collateral > 0) service.loan_collateral{value: collateral}();
 
-        // gain -> contributors directly, proportionally to their initial lock
+        //interests are paid to contributors
         uint256 distributed = 0;
         uint256 n = contributors.length;
         for (uint256 i = 0; i < n; ++i) {
             address c = contributors[i];
-            uint256 share = (gain * initialLocked[c]) / principal;
+            uint256 share = (gain * initial_locked[c]) / lent_amount;
             if (share > 0) {
                 distributed += share;
                 (bool ok, ) = c.call{value: share}("");
                 require(ok, "gain transfer failed");
-                emit InterestGainPaid(c, share);
+                emit paid_interest(c, share);
             }
         }
-        // leftover precision dust -> compensation pool
-        uint256 dust = gain - distributed;
-        if (dust > 0) service.onLoanInterestCollateral{value: dust}();
+        //leftover value created by integer rounding is sent to the compensation pool
+        uint256 leftover = gain - distributed;
+        if (leftover > 0) service.loan_collateral{value: leftover}();
     }
 
-    /// Called by LendingService on the first compensation claim against a failed loan.
-    function markFailed() external {
+    //called by LendingService on the first compensation claim against a failed loan.
+    function mark_failed() external {
         require(msg.sender == address(service), "only service");
-        require(!failedMarked, "already marked");
-        require(isFailed(), "not failed");
-        failedMarked = true;
-        emit LoanFailedMarked();
+        require(!failed_marked, "already marked");
+        require(is_failed(), "not failed");
+        failed_marked = true;
+        emit loan_failed_marked();
     }
 
-    /// Called by LendingService when a contributor claims compensation; reduces their
-    /// remainingDue so later applicant repayments skip the already-compensated portion.
-    function applyCompensation(address contributor, uint256 amount) external {
+    //called by LendingService when a contributor claims compensation. reduces their
+    //remaining_due so later repayments skip the already-compensated portion.
+    function apply_compensation(address contributor, uint256 amount) external {
         require(msg.sender == address(service), "only service");
-        uint256 due = remainingDue[contributor];
-        uint256 take = amount > due ? due : amount;
-        remainingDue[contributor] = due - take;
+        uint256 due = remaining_due[contributor];
+        uint256 portion = amount > due ? due : amount;
+        remaining_due[contributor] = due - portion;
     }
 }

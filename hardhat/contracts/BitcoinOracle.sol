@@ -2,72 +2,80 @@
 pragma solidity ^0.8.28;
 
 contract BitcoinOracle {
-    address public owner;           //deployer account
-    address public new_owner;    //new owner after transfer operation is complete
-    uint256 public minimumFee;      //calculated at deployment time
-    uint256 public immutable deployed_block; //needed by the oracle_daemon to resume operations
+    address public owner;                   //deployer account
+    address public new_owner;               //new owner after transfer operation is complete
+    uint256 public minimum_fee;             //calculated at deployment time
+    bool    public terminated;
+    uint256 public immutable deployed_block;//needed by the oracle_daemon to resume operations
 
-    mapping(string => uint256) public balances; //the mapping uses a "string" value because the .toString used in the offchain scanner 
 
-    event UpdateRequested(string btcAddr, address indexed requester, uint256 fee);
-    event BalanceUpdated(string btcAddr, uint256 satoshis);
-    event MinimumFeeUpdated(uint256 newFee);
-    event OwnershipTransferStarted(address indexed currentOwner, address indexed new_owner);
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    mapping(string => uint256) public balances; //the mapping uses a "string" value because we are treating the bitcoin address as a string
 
-    modifier onlyOwner() { require(msg.sender == owner, "not oracle"); _; }
+    event update_requested(string BTC_addr, address indexed requester, uint256 fee);
+    event balance_updated(string BTC_addr, uint256 satoshis);
+    event minimum_fee_updated(uint256 new_fee);
+    event oracle_terminated();
+    event owner_transfer_start(address indexed current_owner, address indexed new_owner);
+    event owner_transfer_complete(address indexed previousOwner, address indexed new_owner);
 
-    constructor(uint256 _minimumFee) {
+    modifier only_owner() { require(msg.sender == owner, "not oracle"); _; }
+    modifier not_terminated() { require(!terminated, "terminated"); _; }
+
+    constructor(uint256 _minimum_fee) {
         owner = msg.sender;
-        minimumFee = _minimumFee;
+        minimum_fee = _minimum_fee;
         deployed_block = block.number;
     }
 
-    /// Applicants call this to enqueue a refresh of `btcAddr`.
-    function requestUpdate(string calldata btcAddr) external payable {
-        require(msg.value >= minimumFee, "fee too low");
-        emit UpdateRequested(btcAddr, msg.sender, msg.value);
+    //for applicants. optionally used before requesting a loan to update a certain bitcoin address balance
+    function request_update(string calldata BTC_addr) external payable not_terminated{
+        require(msg.value >= minimum_fee, "fee too low");
+        emit update_requested(BTC_addr, msg.sender, msg.value);
     }
 
-    /// Called by the off-chain oracle after scanning UTXOs. This is the
-    /// "update operation" whose gas cost defines the minimum fee.
-    function pushBalance(string calldata btcAddr, uint256 satoshis) external onlyOwner {
-        balances[btcAddr] = satoshis;
-        emit BalanceUpdated(btcAddr, satoshis);
+    //used by the oracle itself
+    function push_balance(string calldata BTC_addr, uint256 satoshis) external only_owner not_terminated{
+        balances[BTC_addr] = satoshis;
+        emit balance_updated(BTC_addr, satoshis);
     }
 
-    function getBalance(string calldata btcAddr) external view returns (uint256) {
-        return balances[btcAddr];
+
+    function get_balance(string calldata BTC_addr) external view returns (uint256) {
+        return balances[BTC_addr];
     }
 
-    /// Set the minimum fee after measuring the gas cost of pushBalance.
-    /// minimumFee should equal gasCost(pushBalance) * 0.1 gwei (see measure_oracle_fee.ts).
-    function setMinimumFee(uint256 _fee) external onlyOwner {
-        minimumFee = _fee;
-        emit MinimumFeeUpdated(_fee);
+    //the initial value of minimum fee is set with the constructor after calling a faux push_balance 
+    function set_minimum_fee(uint256 _fee) external only_owner {
+        minimum_fee = _fee;
+        emit minimum_fee_updated(_fee);
     }
 
-    function withdrawFees(address payable to) external onlyOwner {
+    //normally we would send the fees to the owner by using msg.sender as a recipient of the .call function but seeing as this is not specified in
+    //the project requirements we're letting the owner decide who to send the value to
+    function withdraw_fees(address payable recipient) external only_owner {
+        require(recipient != address(0), "zero address");
         uint256 bal = address(this).balance;
-        (bool ok, ) = to.call{value: bal}("");
+        (bool ok, ) = recipient.call{value: bal}("");
         require(ok, "fee withdrawal failed");
     }
 
-/// Step 1: the current owner nominates a new owner. Nothing changes yet —
-/// the nominee must accept, which prevents handing ownership to a wrong/dead address.
-    function transferOwnership(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "zero address");
-        new_owner = newOwner;
-        emit OwnershipTransferStarted(owner, newOwner);
+    function terminate() external only_owner { 
+        terminated = true;
+        emit oracle_terminated(); 
     }
 
-/// Step 2: the nominee accepts, completing the transfer. Only the pending owner
-/// can call this, proving they control the new key.
-    function acceptOwnership() external {
+    //2-step, symmetric transfer procedure to avoid mistakes and locking the contract in an unrecoverable state
+    function transfer_ownership(address transfer_to) external only_owner {
+        require(transfer_to != address(0), "zero address");
+        new_owner = transfer_to;
+        emit owner_transfer_start(owner, transfer_to);
+    }
+
+    function accept_ownership() external {
         require(msg.sender == new_owner, "not pending owner");
         address previous = owner;
         owner = new_owner;
-        new_owner = address(0);
-        emit OwnershipTransferred(previous, owner);
+        new_owner = address(0); //just to be safe
+        emit owner_transfer_complete(previous, owner);
     }
 }
