@@ -1,26 +1,16 @@
-// test/MultiLoan.test.ts
-//
-// Three proposals resolved together:
-//   A — accepted, fully repaid LAST (after B has already failed & been compensated)
-//   B — accepted, only partially repaid, then expires and is compensated
-//   C — rejected because its BTC address fails the liquidity check
-//
-// Notes on construction:
-//  * A and B use the funded BTC address; C uses a separate UNFUNDED address, so
-//    its rejection is specifically the liquidity check (we also assert the pool
-//    still has enough disposable for C, ruling out a pool-shortfall rejection).
-//  * B funds the compensation pool itself via its partial repayment, because A
-//    (the other potential funder) isn't repaid until the very end.
+//three proposals "active" simultaneously
+// A — accepted, fully repaid last (after B has already failed and compensated)
+// B — accepted, only partially repaid, then expires and is compensated
+// C — rejected because of failed bitcoin liquidity check
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { parseEther } from "viem";
-import { viem, deployService, eventsFrom, totalOwed, networkHelpers, BTC, ONE_BTC_SATS } from "./helpers.js";
+import { viem, deploy_service, events_logs, total_owed, networkHelpers, BTC, ONE_BTC_SATS } from "./helpers.js";
 
 describe("Multi-loan — three simultaneous proposals", () => {
   it("A repaid fully (last), B partially repaid + compensated, C rejected on BTC check", async () => {
-    const ctx = await deployService();
-    const { oracle, service, alice, bob, carol, applicant, publicClient } = ctx;
+    const { oracle, service, alice, bob, carol, applicant, public_client } = await deploy_service();;
 
     // three contributors fund the pool: 10 ETH each -> 30 ETH disposable
     await service.write.deposit({ account: alice.account, value: parseEther("10") });
@@ -52,8 +42,8 @@ describe("Multi-loan — three simultaneous proposals", () => {
     // ── resolve A and B (both accepted) ────────────────────────────────────────
     const hashA = await service.write.resolve_proposal([0n], { account: applicant.account });
     const hashB = await service.write.resolve_proposal([1n], { account: applicant.account });
-    const logsA = await eventsFrom(publicClient, service.abi, hashA, "proposal_resolved");
-    const logsB = await eventsFrom(publicClient, service.abi, hashB, "proposal_resolved");
+    const logsA = await events_logs(public_client, service.abi, hashA, "proposal_resolved");
+    const logsB = await events_logs(public_client, service.abi, hashB, "proposal_resolved");
 
     assert.equal((logsA[0].args as any).approved, true);
     assert.equal((logsB[0].args as any).approved, true);
@@ -77,7 +67,7 @@ describe("Multi-loan — three simultaneous proposals", () => {
     assert.ok(cumDisp >= parseEther("6")); // enough disposable for C -> rejection must be liquidity
 
     const hashC = await service.write.resolve_proposal([2n], { account: applicant.account });
-    const logsC = await eventsFrom(publicClient, service.abi, hashC, "proposal_resolved");
+    const logsC = await events_logs(public_client, service.abi, hashC, "proposal_resolved");
     assert.equal((logsC[0].args as any).approved, false);
     assert.equal((logsC[0].args as any).loan_contract.toLowerCase(),
       "0x0000000000000000000000000000000000000000");
@@ -93,13 +83,13 @@ describe("Multi-loan — three simultaneous proposals", () => {
     const owedBefore = await loanB.read.remaining_due([alice.account.address]);
     assert.ok(owedBefore > 0n);
     const claimHash = await service.write.claim_compensation([bAddr], { account: alice.account });
-    const claimLogs = await eventsFrom(publicClient, service.abi, claimHash, "compensation_claimed");
+    const claimLogs = await events_logs(public_client, service.abi, claimHash, "compensation_claimed");
     assert.equal(claimLogs.length, 1);
     assert.equal(await loanB.read.failed_marked(), true);
     assert.ok((await loanB.read.remaining_due([alice.account.address])) < owedBefore);
 
     // ── A: full repayment, happening LAST ──────────────────────────────────────
-    await loanA.write.repay({ account: applicant.account, value: totalOwed(parseEther("6"), 10) });
+    await loanA.write.repay({ account: applicant.account, value: total_owed(parseEther("6"), 10) });
     assert.equal(await loanA.read.successful(), true);
     assert.equal(await service.read.active_loan([aAddr]), false);
 

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { viem, networkHelpers, eventsFrom, BTC, ONE_BTC_SATS } from "./helpers.js";
+import { viem, networkHelpers, events_logs, BTC, ONE_BTC_SATS } from "./helpers.js";
 import { parseEther, parseGwei } from "viem";
 
 const MIN_FEE = parseGwei("0.1") * 50_000n;
@@ -37,7 +37,7 @@ async function runScenario(serviceContractName: string): Promise<AttackOutcome> 
     await attacker.write.vote([id, true]);
     await networkHelpers.mine(13);
     const h = await service.write.resolve_proposal([id], { account: applicant.account });
-    const ev = (await eventsFrom(pc, service.abi, h, "proposal_resolved"))[0].args as any;
+    const ev = (await events_logs(pc, service.abi, h, "proposal_resolved"))[0].args as any;
     return { approved: ev.approved as boolean, loan: ev.loan_contract as `0x${string}` };
   }
 

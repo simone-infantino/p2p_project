@@ -19,21 +19,21 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { viem, networkHelpers, deployService, BTC, ONE_BTC_SATS } from "./helpers.js";
+import { viem, networkHelpers, deploy_service, BTC, ONE_BTC_SATS } from "./helpers.js";
 import { parseEther, parseGwei, getAddress } from "viem";
 
 const MIN_FEE = parseGwei("0.1") * 50_000n;
 
 describe("Upgradability & termination — LendingService", () => {
   it("set_oracle swaps the oracle the service points at", async () => {
-    const { service, oracle, admin, alice, applicant, publicClient } = await deployService();
+    const { service, oracle, admin, alice, applicant, public_client } = await deploy_service();
 
     // deploy a second oracle and point the service at it
     const oracle2 = await viem.deployContract("BitcoinOracle", [MIN_FEE]);
     const hash = await service.write.set_oracle([oracle2.address], { account: admin.account });
 
     // event reports the swap
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    const receipt = await public_client.waitForTransactionReceipt({ hash });
     assert.equal(getAddress(await service.read.oracle()), getAddress(oracle2.address));
 
     // the NEW oracle now drives the liquidity check: push into oracle2 and a loan resolves
@@ -47,7 +47,7 @@ describe("Upgradability & termination — LendingService", () => {
   });
 
   it("set_oracle is admin-only and rejects the zero address", async () => {
-    const { service, admin, alice } = await deployService();
+    const { service, admin, alice } = await deploy_service();
     const oracle2 = await viem.deployContract("BitcoinOracle", [MIN_FEE]);
     // non-admin cannot swap
     await assert.rejects(
@@ -65,7 +65,7 @@ describe("Upgradability & termination — LendingService", () => {
   });
 
   it("transfer_admin/accept_admin rotates admin in two steps", async () => {
-    const { service, admin, alice, bob } = await deployService();
+    const { service, admin, alice, bob } = await deploy_service();
 
     // step 1: current admin nominates alice; admin is unchanged until accepted
     await service.write.transfer_admin([alice.account.address], { account: admin.account });
@@ -95,20 +95,20 @@ describe("Upgradability & termination — LendingService", () => {
   });
 
   it("set_successor + terminate halts the service and migrates its balance", async () => {
-    const { service, oracle, admin, alice, applicant, publicClient } = await deployService();
+    const { service, oracle, admin, alice, applicant, public_client } = await deploy_service();
 
     // give the service a balance to migrate: one deposit that stays (no active loans)
     await service.write.deposit({ account: alice.account, value: parseEther("5") });
     // withdraw it all back so total_locked stays 0 AND balance is only what we leave;
     // actually keep the deposit so there's a balance to migrate, and ensure no loans:
-    const serviceBalBefore = await publicClient.getBalance({ address: service.address });
+    const serviceBalBefore = await public_client.getBalance({ address: service.address });
     assert.ok(serviceBalBefore >= parseEther("5"));
 
     // choose a successor (a fresh LendingService pointed at the same oracle)
     const successor = await viem.deployContract("LendingService", [oracle.address]);
 
     // cannot terminate without a successor
-    const noSucc = await deployService();
+    const noSucc = await deploy_service();
     await assert.rejects(
       noSucc.service.write.terminate({ account: noSucc.admin.account }),
       /no successor/
@@ -117,10 +117,10 @@ describe("Upgradability & termination — LendingService", () => {
     // register successor, then terminate
     await service.write.set_successor([successor.address], { account: admin.account });
 
-    const succBefore = await publicClient.getBalance({ address: successor.address });
+    const succBefore = await public_client.getBalance({ address: successor.address });
     await service.write.terminate({ account: admin.account });
-    const succAfter = await publicClient.getBalance({ address: successor.address });
-    const serviceBalAfter = await publicClient.getBalance({ address: service.address });
+    const succAfter = await public_client.getBalance({ address: successor.address });
+    const serviceBalAfter = await public_client.getBalance({ address: service.address });
 
     // balance migrated: service emptied, successor received it
     assert.equal(serviceBalAfter, 0n, "terminated service forwarded its whole balance");
@@ -141,7 +141,7 @@ describe("Upgradability & termination — LendingService", () => {
   });
 
   it("terminate is blocked while loans are still active (total_locked != 0)", async () => {
-    const { service, oracle, admin, alice, applicant } = await deployService();
+    const { service, oracle, admin, alice, applicant } = await deploy_service();
     // open a loan so total_locked > 0
     await oracle.write.push_balance([BTC, ONE_BTC_SATS]);
     await service.write.deposit({ account: alice.account, value: parseEther("10") });
@@ -213,13 +213,13 @@ describe("Upgradability & termination — BitcoinOracle", () => {
     // NOTE: assumes the added terminate() sets `terminated = true` and that
     // request_update/push_balance are guarded to revert once terminated.
     const [deployer, alice] = await viem.getWalletClients();
-    const publicClient = await viem.getPublicClient();
+    const public_client = await viem.getPublicClient();
     const oracle = await viem.deployContract("BitcoinOracle", [MIN_FEE]);
 
     // seed a balance and collect a fee BEFORE termination
     await oracle.write.push_balance([BTC, ONE_BTC_SATS]);
     await oracle.write.request_update([BTC], { account: alice.account, value: MIN_FEE });
-    const feeBal = await publicClient.getBalance({ address: oracle.address });
+    const feeBal = await public_client.getBalance({ address: oracle.address });
     assert.ok(feeBal >= MIN_FEE, "oracle collected the request fee");
 
     // terminate
@@ -242,7 +242,7 @@ describe("Upgradability & termination — BitcoinOracle", () => {
 
     // fee withdrawal STILL works after termination (owner can recover funds)
     await oracle.write.withdraw_fees([deployer.account.address]);
-    const afterWithdraw = await publicClient.getBalance({ address: oracle.address });
+    const afterWithdraw = await public_client.getBalance({ address: oracle.address });
     assert.equal(afterWithdraw, 0n, "fees fully withdrawn even after termination");
   });
 });
