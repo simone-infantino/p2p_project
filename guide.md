@@ -236,10 +236,11 @@ java -jar target/offchain-scanner-1.0-SNAPSHOT-jar-with-dependencies.jar bt_chai
 
 ### Install or update to latest version
 ```
-npm install -g hardhat@latest # system
-npm install --save-dev hardhat@latest # project
+npm install -g hardhat@latest          # System
+npm install --save-dev hardhat@latest  # Project
 npx hardhat --version
-``
+```
+Change `latest` with `3.9.0` or another version.
 
 ### Create project
 ```shell

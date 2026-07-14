@@ -1,5 +1,3 @@
-chain/data/geth
-chain/data/geth.ipc
 bt_chain_blocks
 state
 venv

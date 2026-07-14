@@ -124,7 +124,8 @@ def deployment_setup():
     print ("Deployment setup")
     python = venv_activate()
 
-    # Delete state and run script
+    # Delete state files and run script
+    subprocess.run("mkdir -p state", shell=True)
     subprocess.run("rm -f state/*", shell=True)
     subprocess.run([python, "python/setup.py"])
 
