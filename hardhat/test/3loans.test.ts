@@ -8,93 +8,81 @@ import assert from "node:assert/strict";
 import { parseEther } from "viem";
 import { viem, deploy_service, events_logs, total_owed, networkHelpers, BTC, ONE_BTC_SATS } from "./helpers.js";
 
-describe("Multi-loan — three simultaneous proposals", () => {
-  it("A repaid fully (last), B partially repaid + compensated, C rejected on BTC check", async () => {
+describe("three simultaneous proposals", () => {
+  it("A repaid fully (last), B partially repaid + compensated, C rejected on liquidity check", async () => {
     const { oracle, service, alice, bob, carol, applicant, public_client } = await deploy_service();;
 
-    // three contributors fund the pool: 10 ETH each -> 30 ETH disposable
     await service.write.deposit({ account: alice.account, value: parseEther("10") });
     await service.write.deposit({ account: bob.account, value: parseEther("10") });
     await service.write.deposit({ account: carol.account, value: parseEther("10") });
 
-    // BTC is funded (A and B will pass liquidity); a second address stays empty (C fails)
+    //faux bitcoin address to make C fail the check
     const BTC_EMPTY = "1BoatSLRHtKNngkdXEeobR76b53LETtpyT";
     await oracle.write.push_balance([BTC, ONE_BTC_SATS]);
 
-    // ── submit all three "simultaneously" ──────────────────────────────────────
-    // A (id 0): long duration so it never expires during the test
+    //first and last loans have a deliberate long duration so that they don't expire during the test
     await service.write.submit_proposal([parseEther("6"), 10, 1000n, BTC], { account: applicant.account });
-    // B (id 1): short duration so it expires quickly
     await service.write.submit_proposal([parseEther("6"), 20, 5n, BTC], { account: applicant.account });
-    // C (id 2): unfunded BTC address -> will fail the liquidity check
     await service.write.submit_proposal([parseEther("6"), 10, 1000n, BTC_EMPTY], { account: applicant.account });
 
-    // everyone approves all three
     for (const id of [0n, 1n, 2n]) {
       await service.write.vote([id, true], { account: alice.account });
       await service.write.vote([id, true], { account: bob.account });
       await service.write.vote([id, true], { account: carol.account });
     }
 
-    // pass the voting period once for all three
     await networkHelpers.mine(13);
 
-    // ── resolve A and B (both accepted) ────────────────────────────────────────
-    const hashA = await service.write.resolve_proposal([0n], { account: applicant.account });
-    const hashB = await service.write.resolve_proposal([1n], { account: applicant.account });
-    const logsA = await events_logs(public_client, service.abi, hashA, "proposal_resolved");
-    const logsB = await events_logs(public_client, service.abi, hashB, "proposal_resolved");
+    const receipt_A = await service.write.resolve_proposal([0n], { account: applicant.account });
+    const receipt_B = await service.write.resolve_proposal([1n], { account: applicant.account });
+    const logs_A = await events_logs(public_client, service.abi, receipt_A, "proposal_resolved");
+    const logs_B = await events_logs(public_client, service.abi, receipt_B, "proposal_resolved");
 
-    assert.equal((logsA[0].args as any).approved, true);
-    assert.equal((logsB[0].args as any).approved, true);
+    assert.equal(logs_A[0].args.approved, true);
+    assert.equal(logs_B[0].args.approved, true);
 
-    const aAddr = (logsA[0].args as any).loan_contract as `0x${string}`;
-    const bAddr = (logsB[0].args as any).loan_contract as `0x${string}`;
-    const loanA = await viem.getContractAt("Loan", aAddr);
-    const loanB = await viem.getContractAt("Loan", bAddr);
+    const a_addr = logs_A[0].args.loan_contract;
+    const b_addr = logs_B[0].args.loan_contract;
+    const loan_A = await viem.getContractAt("Loan", a_addr);
+    const loan_B = await viem.getContractAt("Loan", b_addr);
 
-    // both are simultaneously active
-    assert.equal(await service.read.active_loan([aAddr]), true);
-    assert.equal(await service.read.active_loan([bAddr]), true);
+    //check if they're both active
+    assert.equal(await service.read.active_loan([a_addr]), true);
+    assert.equal(await service.read.active_loan([b_addr]), true);
 
-    // ── prove C's rejection is the BTC check, not a pool shortfall ─────────────
-    const disp = async (a: `0x${string}`) =>
-      (await service.read.deposited([a])) - (await service.read.locked([a]));
-    const cumDisp =
-      (await disp(alice.account.address)) +
-      (await disp(bob.account.address)) +
-      (await disp(carol.account.address));
-    assert.ok(cumDisp >= parseEther("6")); // enough disposable for C -> rejection must be liquidity
+    //prove that C's rejection is due to failed bitcoin liquiditi check
+    const disp = async (a: `0x${string}`) => (await service.read.deposited([a])) - (await service.read.locked([a]));
+    const cum_disp = (await disp(alice.account.address)) + (await disp(bob.account.address)) + (await disp(carol.account.address));
+    //enough disposable check and contributors have all voted approve, so the only rejection reason can be the liquidity check 
+    assert.ok(cum_disp >= parseEther("6"));
 
-    const hashC = await service.write.resolve_proposal([2n], { account: applicant.account });
-    const logsC = await events_logs(public_client, service.abi, hashC, "proposal_resolved");
-    assert.equal((logsC[0].args as any).approved, false);
-    assert.equal((logsC[0].args as any).loan_contract.toLowerCase(),
-      "0x0000000000000000000000000000000000000000");
+    const receipt_C = await service.write.resolve_proposal([2n], { account: applicant.account });
+    const logs_C = await events_logs(public_client, service.abi, receipt_C, "proposal_resolved");
+    assert.equal(logs_C[0].args.approved, false);
+    assert.equal(logs_C[0].args.loan_contract.toLowerCase(), "0x0000000000000000000000000000000000000000");
 
-    // ── B: partial repayment funds the pool, then it expires and is compensated ─
-    await loanB.write.repay({ account: applicant.account, value: parseEther("1") });
+    await loan_B.write.repay({ account: applicant.account, value: parseEther("1") });
     assert.ok((await service.read.compensation_pool()) > 0n);
 
-    await networkHelpers.mine(10); // past B's short duration, but not A's
-    assert.equal(await loanB.read.is_failed(), true);
-    assert.equal(await loanA.read.is_failed(), false); // A still active
+    //we make loan B expire
+    await networkHelpers.mine(10);
+    assert.equal(await loan_B.read.is_failed(), true);
+    assert.equal(await loan_A.read.is_failed(), false);
 
-    const owedBefore = await loanB.read.remaining_due([alice.account.address]);
-    assert.ok(owedBefore > 0n);
-    const claimHash = await service.write.claim_compensation([bAddr], { account: alice.account });
-    const claimLogs = await events_logs(public_client, service.abi, claimHash, "compensation_claimed");
-    assert.equal(claimLogs.length, 1);
-    assert.equal(await loanB.read.failed_marked(), true);
-    assert.ok((await loanB.read.remaining_due([alice.account.address])) < owedBefore);
+    const owed_before = await loan_B.read.remaining_due([alice.account.address]);
+    assert.ok(owed_before > 0n);
+    const claim_receipt = await service.write.claim_compensation([b_addr], { account: alice.account });
+    const claim_logs = await events_logs(public_client, service.abi, claim_receipt, "compensation_claimed");
+    assert.equal(claim_logs.length, 1);
+    assert.equal(await loan_B.read.failed_marked(), true);
+    assert.ok((await loan_B.read.remaining_due([alice.account.address])) < owed_before);
 
-    // ── A: full repayment, happening LAST ──────────────────────────────────────
-    await loanA.write.repay({ account: applicant.account, value: total_owed(parseEther("6"), 10) });
-    assert.equal(await loanA.read.successful(), true);
-    assert.equal(await service.read.active_loan([aAddr]), false);
+    await loan_A.write.repay({ account: applicant.account, value: total_owed(parseEther("6"), 10) });
+    assert.equal(await loan_A.read.successful(), true);
+    assert.equal(await service.read.active_loan([a_addr]), false);
 
-    // ── final state: A succeeded, B stays failed forever ───────────────────────
-    assert.equal(await loanB.read.successful(), false);
-    assert.equal(await loanB.read.failed_marked(), true);
+    //finally, we check that B is still failed
+    assert.equal(await loan_B.read.successful(), false);
+    assert.equal(await loan_B.read.failed_marked(), true);
   });
 });
