@@ -5,15 +5,10 @@ import { parseEther, parseGwei } from "viem";
 
 const MIN_FEE = parseGwei("0.1") * 50_000n;
 
-type AttackOutcome = {
-  poolBefore: bigint;
-  poolAfter: bigint;
-  owed: bigint;
-  attackerGain: bigint; // net ETH change of the attacker CONTRACT across the attack
-  reverted: boolean;
-};
+type AttackOutcome = { pool_before: bigint; pool_after: bigint; owed: bigint; attacker_gain: bigint; reverted: boolean; };
 
 
+//we pass what type of contract we're testing as a parameter, the safe or the reentrancy-vulnerable one.
 async function runScenario(serviceContractName: string): Promise<AttackOutcome> {
   const [alice, bob, applicant] = await viem.getWalletClients();
   const pc = await viem.getPublicClient();
@@ -24,46 +19,45 @@ async function runScenario(serviceContractName: string): Promise<AttackOutcome> 
 
   await oracle.write.push_balance([BTC, ONE_BTC_SATS]);
 
-  // equal deposits keep the loan splits symmetric
   await service.write.deposit({ account: alice.account, value: parseEther("10") });
   await service.write.deposit({ account: bob.account, value: parseEther("10") });
   await attacker.write.pool_deposit({ value: parseEther("10") });
 
-  async function makeLoan(amount: bigint, rate: number, duration: bigint) {
+  async function make_loan(amount: bigint, rate: number, duration: bigint) {
     const id = (await service.read.next_proposal_id()) as bigint;
     await service.write.submit_proposal([amount, rate, duration, BTC], { account: applicant.account });
     await service.write.vote([id, true], { account: alice.account });
     await service.write.vote([id, true], { account: bob.account });
     await attacker.write.vote([id, true]);
     await networkHelpers.mine(13);
-    const h = await service.write.resolve_proposal([id], { account: applicant.account });
-    const ev = (await events_logs(pc, service.abi, h, "proposal_resolved"))[0].args as any;
-    return { approved: ev.approved as boolean, loan: ev.loan_contract as `0x${string}` };
+    const receipt = await service.write.resolve_proposal([id], { account: applicant.account });
+    const logs = (await events_logs(pc, service.abi, receipt, "proposal_resolved"))[0].args;
+    return { approved: logs.approved as boolean, loan: logs.loan_contract as `0x${string}` };
   }
 
-  // 1) primer loan — fully repaid, funds the compensation pool
-  const primer = await makeLoan(parseEther("10"), 100, 1000n);
-  assert.ok(primer.approved, "primer approved");
-  const primerLoan = await viem.getContractAt("Loan", primer.loan);
-  await primerLoan.write.repay({ account: applicant.account, value: parseEther("20") }); // full: 10*(200/100)
+  //first loan to fund the compensation pool, fully repaid
+  const funder_loan_addr = await make_loan(parseEther("10"), 100, 1000n);
+  assert.ok(funder_loan_addr.approved, "funder_loan_addr approved");
+  const funder_loan = await viem.getContractAt("Loan", funder_loan_addr.loan);
+  await funder_loan.write.repay({ account: applicant.account, value: parseEther("20") }); //full: 10*(200/100)
   const pool = (await service.read.compensation_pool()) as bigint;
-  assert.ok(pool > 0n, "pool funded by primer");
+  assert.ok(pool > 0n, "pool funded by funder_loan_addr");
 
-  // 2) victim loan the attacker is locked into; it fails quickly -> attacker is owed
-  const victim = await makeLoan(parseEther("1.5"), 10, 2n);
+  //vinctim loan, the one the attacker is locked into and gets his gains from
+  const victim = await make_loan(parseEther("1.5"), 10, 2n);
   assert.ok(victim.approved, "victim approved");
-  const victimLoan = await viem.getContractAt("Loan", victim.loan);
+  const victim_loan = await viem.getContractAt("Loan", victim.loan);
   await networkHelpers.mine(5);
-  assert.equal(await victimLoan.read.is_failed(), true);
+  assert.equal(await victim_loan.read.is_failed(), true);
 
-  const owed = (await victimLoan.read.remaining_due([attacker.address])) as bigint;
+  const owed = (await victim_loan.read.remaining_due([attacker.address])) as bigint;
   assert.ok(owed > 0n && owed < pool, "attacker owed a small fraction of the pool");
 
-  // frames to drain the pool = floor(pool/owed); reentries = frames - 1
+  //reentrancies needed to drain the pool = floor(pool/owed); reentries = frames - 1
   const reentries = pool / owed - 1n;
 
-  const poolBefore = (await service.read.compensation_pool()) as bigint;
-  const attackerBalBefore = await pc.getBalance({ address: attacker.address });
+  const pool_before = (await service.read.compensation_pool()) as bigint;
+  const attacker_balance_before = await pc.getBalance({ address: attacker.address });
 
   let reverted = false;
   try {
@@ -72,45 +66,38 @@ async function runScenario(serviceContractName: string): Promise<AttackOutcome> 
     reverted = true;
   }
 
-  const poolAfter = (await service.read.compensation_pool()) as bigint;
-  const attackerBalAfter = await pc.getBalance({ address: attacker.address });
+  const pool_after = (await service.read.compensation_pool()) as bigint;
+  const attacker_balance_after = await pc.getBalance({ address: attacker.address });
 
   return {
-    poolBefore,
-    poolAfter,
+    pool_before,
+    pool_after: pool_after,
     owed,
-    attackerGain: attackerBalAfter - attackerBalBefore,
+    attacker_gain: attacker_balance_after - attacker_balance_before,
     reverted,
   };
 }
 
-describe("Reentrancy — vulnerable service is drained, real service resists", () => {
-  it("VULNERABLE: reentrant claim_compensation drains the pool and the attacker profits", async () => {
+describe("reentrancy scenarios: safe and vulnerable contracts", () => {
+  it("vunlerable: attacker's claim_compensation drains the pool and then they profit", async () => {
     const r = await runScenario("LendingServiceVulnerable");
 
-    // the attack goes through (no revert)
     assert.equal(r.reverted, false, "attack should succeed against the vulnerable contract");
 
-    // the pool is drained far below one fair claim (effectively emptied; leftover may remain)
-    assert.ok(r.poolBefore - r.poolAfter > r.owed, "drained more than the attacker was owed");
-    assert.ok(r.poolAfter < r.owed, "pool drained below a single fair claim");
+    assert.ok(r.pool_before - r.pool_after > r.owed, "drained more than the attacker was owed");
+    assert.ok(r.pool_after < r.owed, "pool drained below a single fair claim");
 
-    // and the attacker NETS A PROFIT: it pulled multiple `compensation`s out of the pool with
-    // no offsetting deduction to its own balance, so its ETH went UP by well over `owed`
-    assert.ok(r.attackerGain > r.owed, "attacker gained more than its legitimate claim");
+    assert.ok(r.attacker_gain > r.owed, "attacker gained more than its legitimate claim");
   });
 
-  it("SAFE: the real LendingService resists the identical attack — pool intact", async () => {
+  it("safe: the real LendingService resists the identical attack", async () => {
     const r = await runScenario("LendingService");
 
-    // Against the safe contract the reentrant claim reverts (remaining_due/pool already
-    // updated before the transfer), which reverts the whole attack. The pool is NOT
-    // drained; at most a single fair claim's worth could ever leave.
-    assert.ok(r.poolAfter >= r.poolBefore - r.owed, "pool lost at most one fair claim, not everything");
-    assert.notEqual(r.poolAfter, 0n, "pool was NOT emptied");
+    assert.equal(r.reverted, true, "attack reverted against the safe contract");
 
-    // the attacker does NOT profit: either the attack reverted (gain ~0, minus gas) or it
-    // received only its single legitimate claim. It never nets more than `owed`.
-    assert.ok(r.attackerGain <= r.owed, "attacker could not profit beyond a single fair claim");
+    assert.ok(r.pool_after >= r.pool_before - r.owed, "pool lost at most one fair claim, not everything");
+    assert.notEqual(r.pool_after, 0n, "pool was not emptied");
+
+    assert.ok(r.attacker_gain <= r.owed, "attacker could not profit beyond a single fair claim");
   });
 });
