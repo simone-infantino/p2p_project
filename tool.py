@@ -84,7 +84,7 @@ def venv_activate():
 def initialize_chain():
     """Clean Geth data and initialize the blockchain."""
 
-    # Delete Geth dat in geth folder and delete geth.ipc socket 
+    # Delete Geth data and socket
     subprocess.run(
         f"rm -rf {CHAINDATA_DIR}/geth && rm -f {CHAINDATA_DIR}/geth.ipc",
         shell=True,
@@ -121,7 +121,6 @@ def start_chain():
 
 def deployment_setup():
     """Run the setup using the virtual environment Python."""
-    print ("Deployment setup")
     python = venv_activate()
 
     # Delete state files and run script

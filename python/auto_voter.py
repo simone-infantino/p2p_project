@@ -1,10 +1,10 @@
 import json
 import time
+
 from pathlib import Path
 from web3 import Web3
 from eth_account import Account
 
-# ── Configuration ─────────────────────────────────────────────────────────────
 
 DEPLOYMENT_FILE = json.loads(Path("state/deployment.json").read_text())
 STATE_FILE = Path("state/auto_voter_state.json")
@@ -22,12 +22,10 @@ w3 = Web3(Web3.HTTPProvider(RPC_URL))
 from web3.middleware import ExtraDataToPOAMiddleware
 w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
 
-assert w3.is_connected(), f"cannot reach geth at {RPC_URL}"
+assert w3.is_connected(), f"Cannot reach geth at {RPC_URL}"
 abi = json.loads(Path("hardhat/artifacts/contracts/LendingService.sol/LendingService.json").read_text())["abi"]
 service = w3.eth.contract(address=SERVICE_ADDR, abi=abi)
 
-
-# ── Functions ─────────────────────────────────────────────────────────────────
 
 def load_checkpoint() -> int:
     if STATE_FILE.exists():
@@ -52,16 +50,15 @@ def approve_proposal(pid: int):
         signed_tx = voter_account.sign_transaction(tx)
         tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
         w3.eth.wait_for_transaction_receipt(tx_hash)
-        print(f"  ✓ approved proposal #{pid}")
+        print("  ✓ Approved")
     except Exception as e:
-        print(f"  · could not vote on #{pid} ({e})")
+        print(f"  · Could not vote: ({e})")
 
 
-# ── Execution ─────────────────────────────────────────────────────────────────
-
-def serve():
+def main():
     next_block = load_checkpoint()
-    print(f"auto-voter {voter_account.address[:12]}… watching proposal_submitted from block {next_block}")
+    print(f"\nAutovoter {voter_account.address[:12]}… watching proposal_submitted from block {next_block}")
+    
     while True:
         latest_block = w3.eth.block_number
         if latest_block >= next_block:
@@ -70,7 +67,7 @@ def serve():
                     from_block=next_block, to_block=latest_block)
                 for ev in logs:
                     pid = ev["args"]["id"]
-                    print(f"noticed new proposal #{pid} — approving (always)")
+                    print(f"Noticed new proposal #{pid}")
                     approve_proposal(pid)
                 save_checkpoint(latest_block + 1)
                 next_block = latest_block + 1
@@ -81,4 +78,4 @@ def serve():
 
 
 if __name__ == "__main__":
-    serve()
+    main()
