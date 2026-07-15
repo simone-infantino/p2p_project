@@ -1,9 +1,3 @@
-// test/Loan.test.ts
-//
-// Tests for Loan behaviour, exercised through the real flow (LendingService
-// deploys the Loan and the Loan calls back into it). Multi-loan stories live
-// in Scenarios.test.ts; this file focuses on a single loan's mechanics.
-
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { parseEther } from "viem";
@@ -15,15 +9,15 @@ describe("Loan", () => {
     const { applicant, public_client } = ctx;
     await fund(ctx, parseEther("6"));
 
-    const before = await public_client.getBalance({ address: applicant.account.address });
+    const borrower_balance_before = await public_client.getBalance({ address: applicant.account.address });
     const { loan } = await approveLoan(ctx, { amount: parseEther("5"), rate: 10, duration: 100n });
-    const after = await public_client.getBalance({ address: applicant.account.address });
+    const borrower_balance_after = await public_client.getBalance({ address: applicant.account.address });
 
     assert.ok(loan);
     assert.equal((await loan!.read.applicant()).toLowerCase(), applicant.account.address.toLowerCase());
     assert.equal(await loan!.read.lent_amount(), parseEther("5"));
     assert.equal(await loan!.read.interest_rate(), 10);
-    assert.ok(after > before); // received ~5 ETH, dwarfs the resolve gas
+    assert.ok(borrower_balance_after > borrower_balance_before); // received ~5 ETH, dwarfs the resolve gas
   });
 
   it("full repayment marks the loan successful and funds the compensation pool", async () => {

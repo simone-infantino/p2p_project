@@ -230,6 +230,14 @@ mvn clean package
 java -jar target/offchain-scanner-1.0-SNAPSHOT-jar-with-dependencies.jar bt_chain_blocks utxo_snapshot.txt 131000
 ```
 
+Useful commands to query `utxo_snapshot.txt`
+```shell
+sort -k2 -nr offchain-scanner/utxo_snapshot.txt | head -20
+```
+```shell
+grep ADDRESS offchain-scanner/utxo_snapshot.txt
+```
+
 ---
 
 ## Hardhat

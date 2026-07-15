@@ -1,42 +1,20 @@
-// test/Upgradability.test.ts
-//
-// Exercises the "manage termination and upgradability" requirement across both
-// stateful contracts:
-//
-//   LendingService:
-//     - set_oracle            (swap the oracle dependency)
-//     - transfer_admin/accept_admin (two-step admin key rotation)
-//     - set_successor + terminate  (succession: halt + migrate balance)
-//     - not_terminated guard  (a terminated service refuses new activity)
-//
-//   BitcoinOracle:
-//     - transfer_ownership/accept_ownership (two-step owner key rotation)
-//     - terminate            (mark retired; refuses new requests/pushes)
-//     - reads/withdraw_fees still work after termination
-//
-// Uses helpers.ts for the shared chain + deploy helpers.
-// Run:  npx hardhat test test/Upgradability.test.ts
-
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { viem, networkHelpers, deploy_service, BTC, ONE_BTC_SATS } from "./helpers.js";
 import { parseEther, parseGwei, getAddress } from "viem";
 
-const MIN_FEE = parseGwei("0.1") * 50_000n;
+const MINI_ORACLE_REQUEST_FEE = parseGwei("0.1") * 50_000n;
 
 describe("Upgradability & termination — LendingService", () => {
   it("set_oracle swaps the oracle the service points at", async () => {
     const { service, oracle, admin, alice, applicant, public_client } = await deploy_service();
 
-    // deploy a second oracle and point the service at it
-    const oracle2 = await viem.deployContract("BitcoinOracle", [MIN_FEE]);
+    const oracle2 = await viem.deployContract("BitcoinOracle", [MINI_ORACLE_REQUEST_FEE]);
     const hash = await service.write.set_oracle([oracle2.address], { account: admin.account });
 
-    // event reports the swap
     const receipt = await public_client.waitForTransactionReceipt({ hash });
     assert.equal(getAddress(await service.read.oracle()), getAddress(oracle2.address));
 
-    // the NEW oracle now drives the liquidity check: push into oracle2 and a loan resolves
     await oracle2.write.push_balance([BTC, ONE_BTC_SATS]);
     await service.write.deposit({ account: alice.account, value: parseEther("10") });
     await service.write.submit_proposal([parseEther("3"), 10, 1000n, BTC], { account: applicant.account });
@@ -48,7 +26,7 @@ describe("Upgradability & termination — LendingService", () => {
 
   it("set_oracle is admin-only and rejects the zero address", async () => {
     const { service, admin, alice } = await deploy_service();
-    const oracle2 = await viem.deployContract("BitcoinOracle", [MIN_FEE]);
+    const oracle2 = await viem.deployContract("BitcoinOracle", [MINI_ORACLE_REQUEST_FEE]);
     // non-admin cannot swap
     await assert.rejects(
       service.write.set_oracle([oracle2.address], { account: alice.account }),
@@ -86,50 +64,42 @@ describe("Upgradability & termination — LendingService", () => {
       getAddress("0x0000000000000000000000000000000000000000")
     );
 
-    // the OLD admin can no longer perform admin actions; the NEW admin can
+    // the old admin can no longer perform admin actions; the new admin can
     await assert.rejects(
       service.write.set_successor([bob.account.address], { account: admin.account }),
       /not admin/
     );
-    await service.write.set_successor([bob.account.address], { account: alice.account }); // new admin works
+    await service.write.set_successor([bob.account.address], { account: alice.account });
   });
 
   it("set_successor + terminate halts the service and migrates its balance", async () => {
     const { service, oracle, admin, alice, applicant, public_client } = await deploy_service();
 
-    // give the service a balance to migrate: one deposit that stays (no active loans)
     await service.write.deposit({ account: alice.account, value: parseEther("5") });
-    // withdraw it all back so total_locked stays 0 AND balance is only what we leave;
-    // actually keep the deposit so there's a balance to migrate, and ensure no loans:
-    const serviceBalBefore = await public_client.getBalance({ address: service.address });
-    assert.ok(serviceBalBefore >= parseEther("5"));
 
-    // choose a successor (a fresh LendingService pointed at the same oracle)
+    const serviceBalanceBeforeTermination = await public_client.getBalance({ address: service.address });
+    assert.ok(serviceBalanceBeforeTermination >= parseEther("5"));
+
     const successor = await viem.deployContract("LendingService", [oracle.address]);
 
-    // cannot terminate without a successor
     const noSucc = await deploy_service();
     await assert.rejects(
       noSucc.service.write.terminate({ account: noSucc.admin.account }),
       /no successor/
     );
 
-    // register successor, then terminate
     await service.write.set_successor([successor.address], { account: admin.account });
 
-    const succBefore = await public_client.getBalance({ address: successor.address });
+    const successorBalanceBefore = await public_client.getBalance({ address: successor.address });
     await service.write.terminate({ account: admin.account });
-    const succAfter = await public_client.getBalance({ address: successor.address });
-    const serviceBalAfter = await public_client.getBalance({ address: service.address });
+    const successorBalanceAfter = await public_client.getBalance({ address: successor.address });
+    const serviceBalanceAfterTermination = await public_client.getBalance({ address: service.address });
 
-    // balance migrated: service emptied, successor received it
-    assert.equal(serviceBalAfter, 0n, "terminated service forwarded its whole balance");
-    assert.equal(succAfter - succBefore, serviceBalBefore, "successor received the migrated balance");
+    assert.equal(serviceBalanceAfterTermination, 0n, "terminated service forwarded its whole balance");
+    assert.equal(successorBalanceAfter - successorBalanceBefore, serviceBalanceBeforeTermination, "successor received the migrated balance");
 
-    // terminated flag set
     assert.equal(await service.read.terminated(), true);
 
-    // the halted service refuses new activity (not_terminated guard)
     await assert.rejects(
       service.write.deposit({ account: alice.account, value: parseEther("1") }),
       /terminated/
@@ -142,7 +112,7 @@ describe("Upgradability & termination — LendingService", () => {
 
   it("terminate is blocked while loans are still active (total_locked != 0)", async () => {
     const { service, oracle, admin, alice, applicant } = await deploy_service();
-    // open a loan so total_locked > 0
+
     await oracle.write.push_balance([BTC, ONE_BTC_SATS]);
     await service.write.deposit({ account: alice.account, value: parseEther("10") });
     await service.write.submit_proposal([parseEther("3"), 10, 100000n, BTC], { account: applicant.account });
@@ -153,7 +123,6 @@ describe("Upgradability & termination — LendingService", () => {
     const successor = await viem.deployContract("LendingService", [oracle.address]);
     await service.write.set_successor([successor.address], { account: admin.account });
 
-    // active loan -> terminate must revert
     await assert.rejects(
       service.write.terminate({ account: admin.account }),
       /loans still active/
@@ -164,7 +133,7 @@ describe("Upgradability & termination — LendingService", () => {
 describe("Upgradability & termination — BitcoinOracle", () => {
   it("transfer_ownership/accept_ownership rotates the owner in two steps", async () => {
     const [deployer, alice, bob] = await viem.getWalletClients();
-    const oracle = await viem.deployContract("BitcoinOracle", [MIN_FEE]);
+    const oracle = await viem.deployContract("BitcoinOracle", [MINI_ORACLE_REQUEST_FEE]);
 
     // deployer is the initial owner
     assert.equal(getAddress(await oracle.read.owner()), getAddress(deployer.account.address));
@@ -194,13 +163,13 @@ describe("Upgradability & termination — BitcoinOracle", () => {
 
   it("owner-only functions reject non-owners", async () => {
     const [deployer, alice] = await viem.getWalletClients();
-    const oracle = await viem.deployContract("BitcoinOracle", [MIN_FEE]);
+    const oracle = await viem.deployContract("BitcoinOracle", [MINI_ORACLE_REQUEST_FEE]);
     await assert.rejects(
       oracle.write.push_balance([BTC, ONE_BTC_SATS], { account: alice.account }),
       /not oracle/
     );
     await assert.rejects(
-      oracle.write.set_minimum_fee([MIN_FEE], { account: alice.account }),
+      oracle.write.set_minimum_fee([MINI_ORACLE_REQUEST_FEE], { account: alice.account }),
       /not oracle/
     );
     await assert.rejects(
@@ -214,15 +183,14 @@ describe("Upgradability & termination — BitcoinOracle", () => {
     // request_update/push_balance are guarded to revert once terminated.
     const [deployer, alice] = await viem.getWalletClients();
     const public_client = await viem.getPublicClient();
-    const oracle = await viem.deployContract("BitcoinOracle", [MIN_FEE]);
+    const oracle = await viem.deployContract("BitcoinOracle", [MINI_ORACLE_REQUEST_FEE]);
 
     // seed a balance and collect a fee BEFORE termination
     await oracle.write.push_balance([BTC, ONE_BTC_SATS]);
-    await oracle.write.request_update([BTC], { account: alice.account, value: MIN_FEE });
-    const feeBal = await public_client.getBalance({ address: oracle.address });
-    assert.ok(feeBal >= MIN_FEE, "oracle collected the request fee");
+    await oracle.write.request_update([BTC], { account: alice.account, value: MINI_ORACLE_REQUEST_FEE });
+    const oracleFeeBalance = await public_client.getBalance({ address: oracle.address });
+    assert.ok(oracleFeeBalance >= MINI_ORACLE_REQUEST_FEE, "oracle collected the request fee");
 
-    // terminate
     await oracle.write.terminate();
     assert.equal(await oracle.read.terminated(), true);
 
@@ -232,7 +200,7 @@ describe("Upgradability & termination — BitcoinOracle", () => {
       /terminated|retired/
     );
     await assert.rejects(
-      oracle.write.request_update([BTC], { account: alice.account, value: MIN_FEE }),
+      oracle.write.request_update([BTC], { account: alice.account, value: MINI_ORACLE_REQUEST_FEE }),
       /terminated|retired/
     );
 
