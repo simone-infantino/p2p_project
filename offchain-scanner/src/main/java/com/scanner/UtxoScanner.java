@@ -186,15 +186,7 @@ public class UtxoScanner {
         else balances.put(addr, updated);
     }
 
-    /**
-     * Atomically (re)write the snapshot: write the full balance map to a temp file
-     * in the SAME directory, then atomically rename it over the target. A concurrent
-     * reader therefore always opens either the old complete file or the new complete
-     * file — never a half-written one.
-     *
-     * The temp file must be on the same filesystem as the target for the rename to be
-     * atomic, which is why it is created in the target's parent directory.
-     */
+    //snapshot updating. It creates a temporary files and overwrites the old snapshot with its content
     private void write_snapshot(String out_path) throws IOException {
         Path target = Paths.get(out_path);
         Path tmp = Paths.get(out_path + ".tmp");
