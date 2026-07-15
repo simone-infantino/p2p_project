@@ -24,7 +24,7 @@ export async function deploy_service() {
 }
 
 //context variable that contains the return of deploy_service
-export type Ctx = Awaited<ReturnType<typeof deploy_service>>;
+export type Context = Awaited<ReturnType<typeof deploy_service>>;
 
 //events reading
 export async function events_logs( public_client: any, abi: any, hash: `0x${string}`, eventName: string ): Promise<Array<{ args: any }>> {
@@ -32,17 +32,17 @@ export async function events_logs( public_client: any, abi: any, hash: `0x${stri
   return parseEventLogs({ abi, logs: receipt.logs, eventName }) as Array<{ args: any }>;
 }
 
-export async function fund(ctx: Ctx, amount: bigint) {
-  await ctx.service.write.deposit({ account: ctx.alice.account, value: amount });
-  await ctx.service.write.deposit({ account: ctx.bob.account, value: amount });
+export async function fund(context: Context, amount: bigint) {
+  await context.service.write.deposit({ account: context.alice.account, value: amount });
+  await context.service.write.deposit({ account: context.bob.account, value: amount });
 }
 
 //a function that simulates a proposal/resolve loan
-export async function approveLoan(
-  ctx: Ctx, parameters: { amount: bigint; rate: number; duration: bigint; id?: bigint; pushBtc?: boolean; votes?: boolean; } ) {
-  const { oracle, service, alice, bob, applicant, public_client } = ctx;
+export async function approve_loan(
+  context: Context, parameters: { amount: bigint; rate: number; duration: bigint; id?: bigint; BTC_address?: boolean; votes?: boolean; } ) {
+  const { oracle, service, alice, bob, applicant, public_client } = context;
   const id = parameters.id ?? 0n;
-  if (parameters.pushBtc ?? true) await oracle.write.push_balance([BTC, ONE_BTC_SATS]);
+  if (parameters.BTC_address ?? true) await oracle.write.push_balance([BTC, ONE_BTC_SATS]);
   await service.write.submit_proposal([parameters.amount, parameters.rate, parameters.duration, BTC], {
     account: applicant.account,
   });

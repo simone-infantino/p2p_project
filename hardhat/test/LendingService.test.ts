@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { parseEther, zeroAddress } from "viem";
-import { deploy_service, fund, approveLoan, events_logs, networkHelpers, BTC } from "./helpers.js";
+import { deploy_service, fund, approve_loan, events_logs, networkHelpers, BTC } from "./helpers.js";
 
 describe("funding pool", () => {
   it("deposit reverts below the minimum deposit", async () => {
@@ -87,32 +87,32 @@ describe("resolve_proposal cases", () => {
   });
 
   it("rejects when disposable pool is insufficient", async () => {
-    const ctx = await deploy_service();
-    await ctx.service.write.deposit({ account: ctx.alice.account, value: parseEther("1") });
-    const { approved, loan_addr } = await approveLoan(ctx, { amount: parseEther("5"), rate: 10, duration: 100n });
+    const context = await deploy_service();
+    await context.service.write.deposit({ account: context.alice.account, value: parseEther("1") });
+    const { approved, loan_addr } = await approve_loan(context, { amount: parseEther("5"), rate: 10, duration: 100n });
     assert.equal(approved, false);
   });
 
   it("rejects when the BTC liquidity check fails", async () => {
-    const ctx = await deploy_service();
-    await fund(ctx, parseEther("6"));
-    const { approved } = await approveLoan(ctx, { amount: parseEther("5"), rate: 10, duration: 100n, pushBtc: false });
+    const context = await deploy_service();
+    await fund(context, parseEther("6"));
+    const { approved } = await approve_loan(context, { amount: parseEther("5"), rate: 10, duration: 100n, BTC_address: false });
     assert.equal(approved, false);
   });
 
   it("rejects on an implicit-reject majority (no approve votes)", async () => {
-    const ctx = await deploy_service();
-    await fund(ctx, parseEther("6"));
-    const { approved } = await approveLoan(ctx, { amount: parseEther("5"), rate: 10, duration: 100n, votes: false });
+    const context = await deploy_service();
+    await fund(context, parseEther("6"));
+    const { approved } = await approve_loan(context, { amount: parseEther("5"), rate: 10, duration: 100n, votes: false });
     assert.equal(approved, false);
   });
 
   it("approves and deploys a Loan when all checks pass", async () => {
-    const ctx = await deploy_service();
-    await fund(ctx, parseEther("6"));
-    const { approved, loan_addr } = await approveLoan(ctx, { amount: parseEther("5"), rate: 10, duration: 100n });
+    const context = await deploy_service();
+    await fund(context, parseEther("6"));
+    const { approved, loan_addr } = await approve_loan(context, { amount: parseEther("5"), rate: 10, duration: 100n });
     assert.equal(approved, true);
-    assert.equal(await ctx.service.read.active_loan([loan_addr]), true);
+    assert.equal(await context.service.read.active_loan([loan_addr]), true);
   });
 });
 
