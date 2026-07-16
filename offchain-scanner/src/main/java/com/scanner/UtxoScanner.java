@@ -88,17 +88,23 @@ public class UtxoScanner {
                 int before = processed;
                 processed = scan_files(files_to_scan, max_blocks, out_path, processed);
 
-                if (processed >= max_blocks) break;               // reached the cap -> done
+                if (processed >= max_blocks) break;
 
-                if (processed == before) {                        // nothing new this pass
+                if (processed == before) {
                     System.out.printf("caught up at %d blocks; waiting for new blocks...%n", processed);
                     Thread.sleep(POLL_MS);
                 }
             }
         } finally {
-            if (temp_directory != null) {
-                for (File f : temp_directory.listFiles()) f.delete();
-                temp_directory.delete();
+            File[] temp_files = temp_directory.listFiles();
+            if (temp_files != null) {
+                for (File f : temp_files) {
+                    if (!f.delete()) System.err.println("failed to delete temp file: " + f);
+                }
+            }
+            if (!temp_directory.delete()) {
+                System.err.println("failed to delete temp directory: " + temp_directory);
+            } else {
                 System.out.println("temp files deleted");
             }
         }
@@ -139,7 +145,7 @@ public class UtxoScanner {
             }
 
             processed++;
-            write_snapshot(out_path);
+            if(processed % 100 == 0) write_snapshot(out_path); //slow down the writings so that the oracle can keep up
 
             if (processed % 10_000 == 0) {
                 System.out.printf("processed %d blocks | %d utxos | %d addresses%n",

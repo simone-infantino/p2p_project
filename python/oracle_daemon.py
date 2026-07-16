@@ -30,27 +30,35 @@ GAS_PRICE = int(DEPLOYMENT_FILE.get("gasPrice")or w3.to_wei(1, "gwei"))
 
 
 def reload_snapshot_if_changed(balances: dict[str, int], _snapshot_mtime: float):
-    if not SNAPSHOT_FILE.exists():
+    try:
+        mtime = SNAPSHOT_FILE.stat().st_mtime
+    except FileNotFoundError:
+        return balances, _snapshot_mtime    #scanner is renaming right now, we try later
+
+    if mtime == _snapshot_mtime:            #no changes in the snapshot
         return balances, _snapshot_mtime
 
-    mtime = SNAPSHOT_FILE.stat().st_mtime
-
-    if mtime == _snapshot_mtime:
-        return balances, _snapshot_mtime
+    text = None
+    for _ in range(5):
+        try:
+            text = SNAPSHOT_FILE.read_text()
+            break
+        except FileNotFoundError:
+            time.sleep(0.05)
+    if text is None:
+        return balances, _snapshot_mtime  # give up this cycle, keep old data
 
     fresh: dict[str, int] = {}
-
-    for line in SNAPSHOT_FILE.read_text().splitlines():
+    for line in text.splitlines():
         if not line:
             continue
-
         addr, sats = line.split("\t")
         fresh[addr] = int(sats)
 
     balances = fresh
     _snapshot_mtime = mtime
 
-    print(f"\nLoaded {len(balances)} addresses from snapshot " f"(mtime {mtime})")
+    print(f"\nLoaded {len(balances)} addresses from snapshot (mtime {mtime})")
 
     return balances, _snapshot_mtime
 

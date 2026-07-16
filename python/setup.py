@@ -14,7 +14,7 @@ RPC_URL = "http://127.0.0.1:8545"
 NUM_CONTRIBUTORS = 3
 NUM_APPLICANTS = 5
 
-# Funding amounts in ETH
+#funding amounts in ETH
 FUND_ORACLE = 20
 FUND_ADMIN = 50
 FUND_CONTRIBUTOR = 100

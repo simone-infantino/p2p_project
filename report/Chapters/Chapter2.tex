@@ -90,57 +90,5 @@ prevents the same malicious behaviour.
 Several malicious strategies were considered during the implementation and testing
 phase.
 
-\subsection{Reentrancy Attack}
-
-The main security issue analyzed is the reentrancy vulnerability in the compensation
-mechanism. The vulnerable implementation allows an attacker contract to recursively
-call external functions before the contract state is updated. The attack is mitigated
-in the secure version by applying the Checks--Effects--Interactions pattern.
-
-\subsection{Unauthorized Access}
-
-Administrative operations are protected through the \texttt{onlyAdmin} modifier.
-Functions such as oracle replacement, service termination, and administrator transfer
-can only be executed by the current administrator.
-
-The ownership transfer mechanism uses a two-step process. The current administrator
-first nominates a pending administrator, who must explicitly accept the role. This
-prevents accidental transfers to invalid addresses.
-
-\subsection{Invalid Input Manipulation}
-
-All externally callable functions validate input parameters using Solidity
-\texttt{require} statements. Examples include:
-\begin{itemize}
-	\item minimum deposit requirements;
-	\item valid interest rate ranges;
-	\item positive loan amounts and durations;
-	\item valid proposal states;
-	\item valid oracle and administrator addresses.
-\end{itemize}
-
-These checks prevent inconsistent states from being introduced through malformed
-transactions.
-
-\subsection{Manipulation of Loan Voting}
-
-The voting system does not use a simple one-address-one-vote mechanism. Instead, voting
-power is weighted according to the contributor's disposable liquidity. This prevents
-accounts with negligible deposits from having the same influence as major liquidity
-providers.
-
-\subsection{Denial of Service and Gas Limitations}
-
-The implementation relies on iterations over contributor lists for some operations.
-Although necessary for proportional fund allocation and weighted voting, these loops
-could become expensive if the number of contributors grows significantly.
-
-For this reason, dynamic operations are limited to the contributor set maintained by
-the contract, and contributors with no remaining deposited or locked funds are removed
-from the list.
-
-Overall, the final implementation follows Solidity security best practices and was
-validated by comparing the vulnerable and secure implementations through dedicated
-security tests.
 
 %----------------------------------------------------------------------------------------

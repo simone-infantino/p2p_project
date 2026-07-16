@@ -15,7 +15,7 @@ SERVICE_ADDR = Web3.to_checksum_address(DEPLOYMENT_FILE["lendingService"]["addre
 
 POLL_SECONDS = 2
 
-# Bot that controls contributor[0] and automatically approves every proposal
+#contributor[o] is our auto voter
 voter_account = Account.from_key(DEPLOYMENT_FILE["contributors"][0]["key"])
 
 w3 = Web3(Web3.HTTPProvider(RPC_URL))
