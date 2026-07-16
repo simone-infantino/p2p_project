@@ -9,7 +9,7 @@ from eth_account import Account
 DEPLOYMENT_FILE = json.loads(Path("state/deployment.json").read_text())
 
 RPC_URL = DEPLOYMENT_FILE["rpc"]
-GAS_PRICE = int(DEPLOYMENT_FILE["gasPrice"])
+GAS_PRICE = int(DEPLOYMENT_FILE.get("gasPrice")or w3.to_wei(1, "gwei"))
 
 w3 = Web3(Web3.HTTPProvider(RPC_URL))
 from web3.middleware import ExtraDataToPOAMiddleware

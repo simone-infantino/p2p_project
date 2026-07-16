@@ -10,7 +10,7 @@ DEPLOYMENT_FILE = json.loads(Path("state/deployment.json").read_text())
 STATE_FILE = Path("state/auto_voter_state.json")
 
 RPC_URL = DEPLOYMENT_FILE["rpc"]
-GAS_PRICE = int(DEPLOYMENT_FILE["gasPrice"])
+GAS_PRICE = int(DEPLOYMENT_FILE.get("gasPrice")or w3.to_wei(1, "gwei"))
 SERVICE_ADDR = Web3.to_checksum_address(DEPLOYMENT_FILE["lendingService"]["address"])
 
 POLL_SECONDS = 2

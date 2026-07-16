@@ -25,6 +25,9 @@ public class UtxoScanner {
 
     private final NetworkParameters params = MainNetParams.get();
 
+    private static final long POLL_MS = 5_000;
+
+
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
             System.err.println("Usage: UtxoScanner <blocks_directory> <out.txt> [max_blocks]");
@@ -37,37 +40,62 @@ public class UtxoScanner {
         new UtxoScanner().run(blocks_directory, out_path, max_blocks);
     }
 
-    private void run(File blocks_directory, String out_path, int max_blocks) throws IOException {
+    private void run(File blocks_directory, String out_path, int max_blocks) throws IOException, InterruptedException {
         Context.getOrCreate(params);
 
-        //latest bitcoin core versions obfuscate block files with a xor operation, providing a xor key to reverse the mechanism
         byte[] xor_key = read_xor_key(blocks_directory);
         if (xor_key != null)
-            System.out.printf("xor.dat found, deobfuscating block files");
+            System.out.println("xor.dat found, deobfuscating block files");
         else
             System.out.println("no xor.dat found, will proceed assuming block files are not obfuscated");
 
-        List<File> raw_files = block_files(blocks_directory);
-        if (raw_files.isEmpty()) {
-            System.err.println("no blk*.dat files found in " + blocks_directory);
-            return;
-        }
+        //cache of already-deobfuscated files and their size
+        Map<String, File> deob_cache = new HashMap<>();
+        Map<String, Long> size_cache = new HashMap<>();
+        File temp_directory = (xor_key != null)
+                ? Files.createTempDirectory("btc_scanner_").toFile()
+                : null;
 
-        //if a xor key is found, the blocks are deobfuscated to temporary copies.
-        //we need this middle step because bitcoinj block loader needs real file handles.
-        //when we're done we delete them
-        List<File> files_to_scan;
-        File temp_directory = null;
-        if (xor_key != null) {
-            temp_directory = Files.createTempDirectory("btc_scanner_").toFile();
-            files_to_scan = deobfuscate_files(raw_files, xor_key, temp_directory);
-            System.out.println("deobfuscated files written to " + temp_directory);
-        } else
-            files_to_scan = raw_files;
+        int processed = 0;
         try {
-            scan_files(files_to_scan, max_blocks, out_path);
+            while (processed < max_blocks) {
+                List<File> raw_files = block_files(blocks_directory);
+                if (raw_files.isEmpty()) {
+                    System.err.println("no blk*.dat files found in " + blocks_directory);
+                    return;
+                }
+
+                //re-deobfuscate only files that are new or have grown since last pass
+                List<File> files_to_scan = new ArrayList<>();
+                if (xor_key != null) {
+                    for (File src : raw_files) {
+                        long curSize = src.length();
+                        Long knownSize = size_cache.get(src.getName());
+                        if (knownSize == null || knownSize != curSize) {
+                            File dst = new File(temp_directory, src.getName());
+                            byte[] data = Files.readAllBytes(src.toPath());
+                            xor_function(data, xor_key);
+                            Files.write(dst.toPath(), data);
+                            deob_cache.put(src.getName(), dst);
+                            size_cache.put(src.getName(), curSize);
+                        }
+                        files_to_scan.add(deob_cache.get(src.getName()));
+                    }
+                } else {
+                    files_to_scan = raw_files;
+                }
+
+                int before = processed;
+                processed = scan_files(files_to_scan, max_blocks, out_path, processed);
+
+                if (processed >= max_blocks) break;               // reached the cap -> done
+
+                if (processed == before) {                        // nothing new this pass
+                    System.out.printf("caught up at %d blocks; waiting for new blocks...%n", processed);
+                    Thread.sleep(POLL_MS);
+                }
+            }
         } finally {
-            //always clean up temp files even if an exception occurs
             if (temp_directory != null) {
                 for (File f : temp_directory.listFiles()) f.delete();
                 temp_directory.delete();
@@ -75,7 +103,6 @@ public class UtxoScanner {
             }
         }
 
-        //final write to guarantee the on-disk file matches the last processed block
         write_snapshot(out_path);
         System.out.printf("check: %d live utxos, %d addresses%n", utxo_value.size(), balances.size());
     }
@@ -88,19 +115,6 @@ public class UtxoScanner {
         return Files.readAllBytes(xor_file.toPath());
     }
 
-    //returns a list of deobfuscated block files
-    private List<File> deobfuscate_files(List<File> files, byte[] xor_key, File temp_directory) throws IOException {
-        List<File> result = new ArrayList<>();
-        for (File src : files) {
-            File dst = new File(temp_directory, src.getName());
-            byte[] data = Files.readAllBytes(src.toPath());
-            xor_function(data, xor_key);
-            Files.write(dst.toPath(), data);
-            result.add(dst);
-        }
-        return result;
-    }
-
     //bitcoin core uses the key bytes in a cyclic manner
     private void xor_function(byte[] data, byte[] xor_key) {
         for (int i = 0; i < data.length; i++) {
@@ -108,33 +122,31 @@ public class UtxoScanner {
         }
     }
 
-    private void scan_files(List<File> files, int max_blocks, String out_path) throws IOException {
+    private int scan_files(List<File> files, int max_blocks, String out_path, int processed) throws IOException {
         BlockFileLoader loader = new BlockFileLoader(params, files);
-        int processed = 0;
 
         for (Block block : loader) {
             if (processed >= max_blocks) break;
             Sha256Hash h = block.getHash();
-            if (!seen_blocks.add(h)) continue; //skip already-seen
+            if (!seen_blocks.add(h)) continue;   //skip blocks handled in a previous check
 
             try {
                 process_block(block);
             } catch (Exception e) {
-                System.err.println("stopped at block number " + processed + ". error: " + e);
+                //in case we read the block mid-writing by bitcoin core
+                System.err.println("stopped this pass at block " + processed + ". error: " + e);
                 break;
             }
 
             processed++;
-
-            //as said before, after each block we update the snapshot
             write_snapshot(out_path);
 
-            //QOL terminal update for the reader
             if (processed % 10_000 == 0) {
                 System.out.printf("processed %d blocks | %d utxos | %d addresses%n",
                         processed, utxo_value.size(), balances.size());
             }
         }
+        return processed;
     }
 
     private void process_block(Block block) {
