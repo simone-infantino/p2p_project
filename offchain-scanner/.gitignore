@@ -21,8 +21,8 @@ target/
 *.lock
 
 # Generated UTXO snapshots
-#utxo_snapshot.txt
-#*.snapshot
+utxo_snapshot.txt
+*.snapshot
 
 # ------------------------------------------------------------------------------
 # Temporary files

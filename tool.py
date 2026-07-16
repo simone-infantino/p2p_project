@@ -159,7 +159,7 @@ MENU_ACTIONS = {
     "5": ("Deployment (run once) to initialize accounts, funds, contracts", deployment_setup),
     "6": ("Start Oracle Daemon", oracle_daemon),
     "7": ("Start Auto Voter", auto_voter),
-    "8": ("Start Demo (lending workflow simulation)", demo),
+    "8": ("Start Demo", demo),
     "9": ("Attach to Geth (query the chain)", geth_attach),
 }
 
