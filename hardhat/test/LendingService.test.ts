@@ -131,7 +131,7 @@ describe("admin & termination", () => {
 
   it("admin can set a successor and terminate when no value is locked", async () => {
     const { service, oracle, admin } = await networkHelpers.loadFixture(deploy_service);
-    const successor = await viem.deployContract("LendingService", [oracle.address]);
+    const successor = await viem.deployContract("LoanService", [oracle.address]);
     await successor.write.set_migration_source([service.address], { account: admin.account });
     await service.write.set_successor([successor.address], { account: admin.account });
     await service.write.terminate({ account: admin.account });

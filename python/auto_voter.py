@@ -11,7 +11,7 @@ STATE_FILE = Path("state/auto_voter_state.json")
 
 RPC_URL = DEPLOYMENT_FILE["rpc"]
 GAS_PRICE = int(DEPLOYMENT_FILE.get("gasPrice")or w3.to_wei(1, "gwei"))
-SERVICE_ADDR = Web3.to_checksum_address(DEPLOYMENT_FILE["lendingService"]["address"])
+SERVICE_ADDR = Web3.to_checksum_address(DEPLOYMENT_FILE["loanService"]["address"])
 
 POLL_SECONDS = 2
 
@@ -23,7 +23,7 @@ from web3.middleware import ExtraDataToPOAMiddleware
 w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
 
 assert w3.is_connected(), f"Cannot reach geth at {RPC_URL}"
-abi = json.loads(Path("hardhat/artifacts/contracts/LendingService.sol/LendingService.json").read_text())["abi"]
+abi = json.loads(Path("hardhat/artifacts/contracts/LoanService.sol/LoanService.json").read_text())["abi"]
 service = w3.eth.contract(address=SERVICE_ADDR, abi=abi)
 
 

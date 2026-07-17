@@ -142,7 +142,7 @@ contract Loan {
         if (leftover > 0) service.loan_collateral{value: leftover}();
     }
 
-    //called by LendingService on the first compensation claim against a failed loan.
+    //called by LoanService on the first compensation claim against a failed loan.
     function mark_failed() external {
         require(msg.sender == address(service), "only service");
         require(!failed_marked, "already marked");
@@ -151,7 +151,7 @@ contract Loan {
         emit loan_failed_marked();
     }
 
-    //called by LendingService when a contributor claims compensation. reduces their
+    //called by LoanService when a contributor claims compensation. reduces their
     //remaining_due so later repayments skip the already-compensated portion.
     function apply_compensation(address contributor, uint256 amount) external {
         require(msg.sender == address(service), "only service");

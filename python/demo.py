@@ -25,7 +25,7 @@ def load_contract_abi(name):
 btc_oracle = w3.eth.contract(
     address=Web3.to_checksum_address(DEPLOYMENT_FILE["oracle"]["address"]), abi=load_contract_abi("BitcoinOracle"))
 lending_service = w3.eth.contract(
-    address=Web3.to_checksum_address(DEPLOYMENT_FILE["lendingService"]["address"]), abi=load_contract_abi("LendingService"))
+    address=Web3.to_checksum_address(DEPLOYMENT_FILE["loanService"]["address"]), abi=load_contract_abi("LoanService"))
 LOAN_ABI = load_contract_abi("Loan")
 
 C0 = Account.from_key(DEPLOYMENT_FILE["contributors"][0]["key"])  # Auto voter
@@ -103,30 +103,30 @@ def create_funded_account(eth_amount, name):
     return acct
 
 
-def request_oracle_update(applicant, btc):
+def request_oracle_update(applicant, btc_address):
     fee = btc_oracle.functions.minimum_fee().call()
-    send_transaction(applicant, btc_oracle.functions.request_update(btc), value=fee)
-    print(f"   {get_account_label(applicant)} requested an oracle update for {btc} (fee {fee} wei)")
+    send_transaction(applicant, btc_oracle.functions.request_update(btc_address), value=fee)
+    print(f"   {get_account_label(applicant)} requested an oracle update for {btc_address} (fee {fee} wei)")
 
 
-def wait_for_oracle_update(btc, timeout=90):
-    print(f"   - waiting for the oracle daemon to push a balance for {btc} …")
+def wait_for_oracle_update(btc_address, timeout=90):
+    print(f"   - waiting for the oracle daemon to push a balance for {btc_address} …")
     from_block = w3.eth.block_number
     deadline = time.time() + timeout
     while time.time() < deadline:
         logs = btc_oracle.events.balance_updated().get_logs(from_block=from_block)
         for log in logs:
-            if log["args"]["BTC_addr"] == btc:
-                bal = btc_oracle.functions.get_balance(btc).call()
+            if log["args"]["BTC_addr"] == btc_address:
+                bal = btc_oracle.functions.get_balance(btc_address).call()
                 print(f"   - Daemon pushed {bal} sat (~{bal*30//100_000_000} ETH equiv)")
                 return bal
         time.sleep(2)
     raise RuntimeError("Oracle Daemon did not push a balance in time. Check daemon execution and address.")
 
 
-def request_and_wait_for_oracle(applicant, btc):
-    request_oracle_update(applicant, btc)
-    wait_for_oracle_update(btc)
+def request_and_wait_for_oracle(applicant, btc_address):
+    request_oracle_update(applicant, btc_address)
+    wait_for_oracle_update(btc_address)
 
 
 def current_contributors():
@@ -158,20 +158,20 @@ def print_status_table():
         print(f"      - {name}: {state}")
 
 
-def oracle_balance_wei_equivalent(btc) -> int:
-    sats = btc_oracle.functions.get_balance(btc).call()
+def oracle_balance_wei_equivalent(btc_address) -> int:
+    sats = btc_oracle.functions.get_balance(btc_address).call()
     return sats * 30 * 10**18 // 100_000_000
 
 
-def rejection_reason(amount_wei, btc) -> str:
+def rejection_reason(amount_wei, btc_address) -> str:
     cumulative_disposable = sum(lending_service.functions.deposited(c.address).call() - lending_service.functions.locked(c.address).call()
               for c, _ in current_contributors())
     if cumulative_disposable < amount_wei:
         return (f"INSUFFICIENT POOL — cumulative disposable "
                 f"{w3.from_wei(cumulative_disposable,'ether')} ETH < requested {w3.from_wei(amount_wei,'ether')} ETH")
-    if oracle_balance_wei_equivalent(btc) < amount_wei:
+    if oracle_balance_wei_equivalent(btc_address) < amount_wei:
         return (f"BITCOIN LIQUIDITY TOO LOW — oracle balance is "
-                f"{w3.from_wei(oracle_balance_wei_equivalent(btc),'ether')} ETH-equiv < requested "
+                f"{w3.from_wei(oracle_balance_wei_equivalent(btc_address),'ether')} ETH-equiv < requested "
                 f"{w3.from_wei(amount_wei,'ether')} ETH")
     return "MAJORITY REJECT — approve weight did not exceed reject weight (non-voters count as reject)"
 
@@ -190,11 +190,11 @@ def vote_non_bot_contributors(pid, approve=True):
     time.sleep(3)   #give the auto-voter time to notice the proposal_submitted event
 
 
-def submit_and_resolve_proposal(name, applicant, amount, rate, duration, btc=BTC_GENESIS_ADDR, approve=True):
+def submit_and_resolve_proposal(name, applicant, amount, rate, duration, btc_address=BTC_GENESIS_ADDR, approve=True):
     pid = lending_service.functions.next_proposal_id().call()
-    send_transaction(applicant, lending_service.functions.submit_proposal(to_wei(amount), rate, duration, btc))
+    send_transaction(applicant, lending_service.functions.submit_proposal(to_wei(amount), rate, duration, btc_address))
     print(f"   Proposal #{pid} submitted by {get_account_label(applicant)} "
-          f"(amount: {amount}, rate: {rate}%, dur: {duration}, btc: {btc})")
+          f"(amount: {amount}, rate: {rate}%, dur: {duration}, btc_address: {btc_address})")
     vote_non_bot_contributors(pid, approve=approve)
     mine_blocks(13)
 
@@ -206,17 +206,17 @@ def submit_and_resolve_proposal(name, applicant, amount, rate, duration, btc=BTC
         loan_contracts[name] = get_loan_contract(event["loan_contract"])
         print_status_table()
         return loan_contracts[name]
-    print(f"   Proposal #{pid}: REJECTED: {rejection_reason(to_wei(amount), btc)}")
+    print(f"   Proposal #{pid}: REJECTED: {rejection_reason(to_wei(amount), btc_address)}")
     return None
 
 
-def submit_proposal_only(name, applicant, amount, rate, duration, btc=BTC_GENESIS_ADDR, approve=True):
+def submit_proposal_only(name, applicant, amount, rate, duration, btc_address=BTC_GENESIS_ADDR, approve=True):
     pid = lending_service.functions.next_proposal_id().call()
-    send_transaction(applicant, lending_service.functions.submit_proposal(to_wei(amount), rate, duration, btc))
+    send_transaction(applicant, lending_service.functions.submit_proposal(to_wei(amount), rate, duration, btc_address))
     print(f"   Proposal #{pid} submitted by {get_account_label(applicant)} "
-          f"(amount: {amount}, rate: {rate}%, dur: {duration}, btc: {btc})")
+          f"(amount: {amount}, rate: {rate}%, dur: {duration}, btc_address: {btc_address})")
     vote_non_bot_contributors(pid, approve=approve)
-    return {"name": name, "pid": pid, "applicant": applicant, "amount": amount, "btc": btc}
+    return {"name": name, "pid": pid, "applicant": applicant, "amount": amount, "btc_address": btc_address}
 
 
 def resolve_proposal_batch(submissions):
@@ -229,7 +229,7 @@ def resolve_proposal_batch(submissions):
             loan_contracts[s["name"]] = get_loan_contract(event["loan_contract"])
             print_status_table()
         else:
-            print(f"   Proposal #{s['pid']}: REJECTED: {rejection_reason(to_wei(s['amount']), s['btc'])}")
+            print(f"   Proposal #{s['pid']}: REJECTED: {rejection_reason(to_wei(s['amount']), s['btc_address'])}")
 
 
 def claim_compensation(contributor, name, cname):
@@ -267,14 +267,14 @@ def main():
     batch = []
     batch.append(submit_proposal_only("L0 (app0)", applicants[0], 6, 50, 1000))   #repaid last
     batch.append(submit_proposal_only("L2 (app2)", applicants[2], 4, 100, 1000))  #repaid early, funds the pool
-    batch.append(submit_proposal_only("L5 (app3,good)", applicants[3], 3, 15, 1000, btc=BTC_GOOD_ADDR))
+    batch.append(submit_proposal_only("L5 (app3,good)", applicants[3], 3, 15, 1000, btc_address=BTC_GOOD_ADDR))
     batch.append(submit_proposal_only("L1 (app1)", applicants[1], 4, 20, 60))     #partial, fails
     resolve_proposal_batch(batch)
     print("After the first submissions")
     print_snapshot(involved_applicants=[applicants[0], applicants[2]])
 
     print("\nTIMELINE — rejection #1: Bitcoin liquidity — address was never requested, so balance is 0")
-    submit_and_resolve_proposal("Empty BTC address", applicants[3], 5, 10, 1000, btc=BTC_EMPTY_ADDR)
+    submit_and_resolve_proposal("Empty BTC address", applicants[3], 5, 10, 1000, btc_address=BTC_EMPTY_ADDR)
 
     print("\nNEW ACCOUNT — applicant that submits a loan")
     new_applicant = create_funded_account(20, "new applicant")
@@ -297,7 +297,7 @@ def main():
     submit_and_resolve_proposal("Majority rejected", applicants[4], 5, 10, 1000, approve=False)
 
     print("\nTIMELINE — rejection #4: real BTC balance exists but is too low for the amount")
-    submit_and_resolve_proposal("Low BTC balance", applicants[3], 10, 10, 1000, btc=BTC_LOW_ADDR)
+    submit_and_resolve_proposal("Low BTC balance", applicants[3], 10, 10, 1000, btc_address=BTC_LOW_ADDR)
 
     print("\nTIMELINE — L2 repaid successfully while L0/L1/L3 still run")
     send_transaction(applicants[2], loan_contracts["L2 (app2)"].functions.repay(), value=calculate_total_due(4, 100) - to_wei(1))

@@ -17,7 +17,7 @@ interface Lending_Service_Migration_Interface {
     ) external;
 }
 
-contract LendingService is Loan_Service_Interface {
+contract LoanService is Loan_Service_Interface {
     uint256 public constant MIN_DEPOSIT = 100_000 wei;
     uint256 public constant SATOSHIS_PER_BTC = 1e8;
     uint256 public constant BTC_ETH_RATE = 30;   //1 btc = 30 eth

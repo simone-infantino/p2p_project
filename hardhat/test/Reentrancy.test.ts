@@ -80,7 +80,7 @@ async function runScenario(serviceContractName: string): Promise<AttackOutcome> 
 
 describe("reentrancy scenarios: safe and vulnerable contracts", () => {
   it("vunlerable: attacker's claim_compensation drains the pool and then they profit", async () => {
-    const r = await runScenario("LendingServiceVulnerable");
+    const r = await runScenario("LoanServiceVulnerable");
 
     assert.equal(r.reverted, false, "attack should succeed against the vulnerable contract");
 
@@ -90,8 +90,8 @@ describe("reentrancy scenarios: safe and vulnerable contracts", () => {
     assert.ok(r.attacker_gain > r.owed, "attacker gained more than its legitimate claim");
   });
 
-  it("safe: the real LendingService resists the identical attack", async () => {
-    const r = await runScenario("LendingService");
+  it("safe: the real LoanService resists the identical attack", async () => {
+    const r = await runScenario("LoanService");
 
     assert.equal(r.reverted, true, "attack reverted against the safe contract");
 

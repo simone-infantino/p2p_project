@@ -7,7 +7,7 @@ interface Oracle_Interface {
     function get_balance(string calldata BTC_addr) external view returns (uint256);
 }
 
-contract LendingServiceVulnerable is Loan_Service_Interface {
+contract LoanServiceVulnerable is Loan_Service_Interface {
     uint256 public constant MIN_DEPOSIT = 100_000 wei;
     uint256 public constant PROPOSAL_VOTING_PERIOD = 12;
     uint256 public constant BTC_ETH_RATE = 30;

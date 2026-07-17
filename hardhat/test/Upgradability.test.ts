@@ -5,7 +5,7 @@ import { parseEther, parseGwei, getAddress } from "viem";
 
 const MINI_ORACLE_REQUEST_FEE = parseGwei("0.1") * 50_000n;
 
-describe("Upgradability & termination — LendingService", () => {
+describe("Upgradability & termination — LoanService", () => {
   it("set_oracle swaps the oracle the service points at", async () => {
     const { service, oracle, admin, alice, applicant, public_client } = await networkHelpers.loadFixture(deploy_service);
 
@@ -47,7 +47,7 @@ describe("Upgradability & termination — LendingService", () => {
 
     //the old admin can no longer perform admin activities
     await viem.assertions.revertWith( service.write.set_successor([bob.account.address], { account: admin.account }), "not admin" );
-    const successor = await viem.deployContract("LendingService", [oracle.address]);
+    const successor = await viem.deployContract("LoanService", [oracle.address]);
     await service.write.set_successor([successor.address], { account: alice.account });
   });
 
@@ -63,7 +63,7 @@ describe("Upgradability & termination — LendingService", () => {
     const total_deposited_before = await service.read.total_deposited();
     const collateral_percent_before = await service.read.collateral_percent();
 
-    const successor = await viem.deployContract("LendingService", [oracle.address]);
+    const successor = await viem.deployContract("LoanService", [oracle.address]);
 
     const noSucc = await deploy_service();
     await viem.assertions.revertWith( noSucc.service.write.terminate({ account: noSucc.admin.account }), "no successor" );
@@ -100,7 +100,7 @@ describe("Upgradability & termination — LendingService", () => {
     await networkHelpers.mine(13);
     await service.write.resolve_proposal([0n], { account: applicant.account });
 
-    const successor = await viem.deployContract("LendingService", [oracle.address]);
+    const successor = await viem.deployContract("LoanService", [oracle.address]);
     await service.write.set_successor([successor.address], { account: admin.account });
 
     await viem.assertions.revertWith( service.write.terminate({ account: admin.account }), "loans still active" );

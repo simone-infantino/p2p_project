@@ -141,7 +141,7 @@ def deploy_oracle(oracle_acct):
 
 
 def deploy_lending_service(admin_acct, oracle):
-    ls_abi, ls_bytecode = load_contract_artifact("LendingService")
+    ls_abi, ls_bytecode = load_contract_artifact("LoanService")
 
     service = deploy_contract(admin_acct, ls_abi, ls_bytecode, oracle.address)
 
@@ -158,7 +158,7 @@ def save_deployment_file(oracle, oracle_acct, min_fee, service, admin_acct, cont
             "ownerKey": w3.to_hex(oracle_acct.key),
             "minimumFee": str(min_fee),
         },
-        "lendingService": {
+        "loanService": {
             "address": service.address,
             "adminAddress": admin_acct.address,
             "adminKey": w3.to_hex(admin_acct.key),
@@ -196,9 +196,9 @@ def main():
     print(f"  BitcoinOracle @ {oracle.address}")
     print(f"  pushBalance gas ~{gas}, minimumFee set to {min_fee} wei")
 
-    print("\nDeploying LendingService from the admin account ...")
+    print("\nDeploying LoanService from the admin account ...")
     service = deploy_lending_service(admin_acct, oracle)
-    print(f"  LendingService @ {service.address}")
+    print(f"  LoanService @ {service.address}")
 
     save_deployment_file(oracle, oracle_acct, min_fee, service, admin_acct, contributors, applicants)
     print(f"\nWrote {DEPLOYMENT_FILE}")

@@ -19,7 +19,7 @@ export async function deploy_service() {
   const public_client = await viem.getPublicClient();
   const min_fee = parseGwei("0.1") * 50_000n;
   const oracle = await viem.deployContract("BitcoinOracle", [min_fee]);
-  const service = await viem.deployContract("LendingService", [oracle.address]);
+  const service = await viem.deployContract("LoanService", [oracle.address]);
   return { oracle, service, admin, alice, bob, applicant, carol, public_client, min_fee };
 }
 
