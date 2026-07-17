@@ -7,6 +7,16 @@ interface Oracle_Interface {
     function get_balance(string calldata BTC_addr) external view returns (uint256);
 }
 
+interface Lending_Service_Migration_Interface {
+    function import_state(
+        address[] calldata contributors,
+        uint256[] calldata deposits,
+        uint256 _total_deposited,
+        uint256 _compensation_pool,
+        uint8   _collateral_percent
+    ) external;
+}
+
 contract LendingService is Loan_Service_Interface {
     uint256 public constant MIN_DEPOSIT = 100_000 wei;
     uint256 public constant SATOSHIS_PER_BTC = 1e8;
@@ -17,6 +27,7 @@ contract LendingService is Loan_Service_Interface {
     address public pending_admin;
     bool    public terminated;
     address public successor;        //set when migrating to a new version
+    address public migration_source; //set on the new service to link to the old one when migrating data from import_state
     
     mapping(address => uint256) public deposited;
     mapping(address => uint256) public locked;
@@ -334,24 +345,65 @@ contract LendingService is Loan_Service_Interface {
 
     //upgradability
     
-    function set_successor(address _successor) external only_admin { successor = _successor; }
+    //called by old service
+    function set_successor(address _successor) external only_admin { 
+        successor = _successor; 
+        require(_successor.code.length > 0, "successor not a contract");
+    }
+
+    //called by new service
+    function set_migration_source(address _source) external only_admin { migration_source = _source; }
+
+    function import_state( address[] calldata contributors, uint256[] calldata deposits, uint256 _total_deposited, uint256 _compensation_pool, uint8 _collateral_percent ) external {
+        require(msg.sender == migration_source, "not migration source");
+        require(contributor_list.length == 0, "already initialised");
+        require(contributors.length == deposits.length, "length mismatch");
+
+        for (uint256 i = 0; i < contributors.length; i++) {
+            address c = contributors[i];
+            uint256 amount = deposits[i];
+            if (amount == 0) continue;
+            if (!is_contributor[c]) {
+                is_contributor[c] = true;
+                contributor_index[c] = contributor_list.length;
+                contributor_list.push(c);
+            }
+            deposited[c] += amount;
+        }
+
+        total_deposited    = _total_deposited;
+        compensation_pool  = _compensation_pool;
+        collateral_percent = _collateral_percent;
+    }
     
     function terminate() external only_admin {
         require(successor != address(0), "no successor");
         require(total_locked == 0, "loans still active");
 
-        terminated = true;
+        uint256 n = contributor_list.length;
+        address[] memory contributors = new address[](n);
+        uint256[] memory deposits      = new uint256[](n);
+        for (uint256 i = 0; i < n; i++) {
+            address c = contributor_list[i];
+            contributors[i] = c;
+            deposits[i] = deposited[c];
+        }
+
+        Lending_Service_Migration_Interface(successor).import_state( contributors, deposits, total_deposited, compensation_pool, collateral_percent);
+
         //migrate eth balance to successor
         uint256 bal = address(this).balance;
         (bool ok, ) = successor.call{value: bal}("");
-
         require(ok, "migration transfer failed");
+
+        terminated = true;
 
         emit service_terminated(successor);
     }
 
     function set_oracle(address new_oracle) external only_admin {
         require(new_oracle != address(0), "zero address");
+        require(new_oracle.code.length > 0, "oracle not a contract");
 
         address previous = address(oracle);
         oracle = Oracle_Interface(new_oracle);

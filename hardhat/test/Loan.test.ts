@@ -1,11 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { parseEther } from "viem";
-import { deploy_service, fund, approve_loan, total_owed, networkHelpers } from "./helpers.js";
+import { viem, networkHelpers, deploy_service, fund, approve_loan, total_owed } from "./helpers.js";
 
 describe("Loan", () => {
   it("stores its terms and forwards the value to the applicant", async () => {
-    const context = await deploy_service();
+    const context = await networkHelpers.loadFixture(deploy_service);
     const { applicant, public_client } = context;
     await fund(context, parseEther("6"));
 
@@ -21,7 +21,7 @@ describe("Loan", () => {
   });
 
   it("full repayment marks the loan successful and funds the compensation pool", async () => {
-    const context = await deploy_service();
+    const context = await networkHelpers.loadFixture(deploy_service);
     await fund(context, parseEther("6"));
     const { loan, loan_addr } = await approve_loan(context, { amount: parseEther("5"), rate: 10, duration: 100n });
     assert.ok(loan);
@@ -34,7 +34,7 @@ describe("Loan", () => {
   });
 
   it("a partial repayment pays base and interest without completing the loan", async () => {
-    const context = await deploy_service();
+    const context = await networkHelpers.loadFixture(deploy_service);
     await fund(context, parseEther("6"));
     const { loan } = await approve_loan(context, { amount: parseEther("5"), rate: 10, duration: 100n });
     assert.ok(loan);
@@ -48,7 +48,7 @@ describe("Loan", () => {
   });
 
   it("becomes failed after expiration without full repayment", async () => {
-    const context = await deploy_service();
+    const context = await networkHelpers.loadFixture(deploy_service);
     await fund(context, parseEther("6"));
     const { loan } = await approve_loan(context, { amount: parseEther("5"), rate: 10, duration: 2n });
     assert.ok(loan);
@@ -59,13 +59,10 @@ describe("Loan", () => {
   });
 
   it("only the applicant may repay", async () => {
-    const context = await deploy_service();
+    const context = await networkHelpers.loadFixture(deploy_service);
     await fund(context, parseEther("6"));
     const { loan } = await approve_loan(context, { amount: parseEther("5"), rate: 10, duration: 100n });
     assert.ok(loan);
-    await assert.rejects(
-      loan!.write.repay({ account: context.bob.account, value: parseEther("1") }),
-      /only applicant/
-    );
+    await viem.assertions.revertWith( loan!.write.repay({ account: context.bob.account, value: parseEther("1") }), "only applicant" );
   });
 });

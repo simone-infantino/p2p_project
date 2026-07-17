@@ -1,7 +1,7 @@
 //three proposals "active" simultaneously
-// A — accepted, fully repaid last (after B has already failed and compensated)
-// B — accepted, only partially repaid, then expires and is compensated
-// C — rejected because of failed bitcoin liquidity check
+//A — accepted, fully repaid last (after B has already failed and compensated)
+//B — accepted, only partially repaid, then expires and is compensated
+//C — rejected because of failed bitcoin liquidity check
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +10,7 @@ import { viem, deploy_service, events_logs, total_owed, networkHelpers, BTC, ONE
 
 describe("three simultaneous proposals", () => {
   it("A repaid fully (last), B partially repaid + compensated, C rejected on liquidity check", async () => {
-    const { oracle, service, alice, bob, carol, applicant, public_client } = await deploy_service();;
+    const { oracle, service, alice, bob, carol, applicant, public_client } = await networkHelpers.loadFixture(deploy_service);
 
     await service.write.deposit({ account: alice.account, value: parseEther("10") });
     await service.write.deposit({ account: bob.account, value: parseEther("10") });
