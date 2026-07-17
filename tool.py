@@ -25,21 +25,28 @@ CHAIN_NET_ID = 202526
 
 def offchain_scanner():
     try:
-        # 1. Create bt_chain_blocks directory
-        subprocess.run(["mkdir", "-p", "bt_chain_blocks"], check=True)
+        # 1. Check Bitcoin blocks directory
+        bitcoin_blocks_dir = Path("bt_chain_blocks")
 
-        # 2. Copy Bitcoin blocks (may take up space and time)
-        bitcoin_blocks_src = Path.home() / ".bitcoin" / "blocks"
+        if not bitcoin_blocks_dir.exists():
+            raise FileNotFoundError("Bitcoin blocks directory 'bt_chain_blocks' not found.")
+
+        # Check that the directory is not empty
+        if not any(bitcoin_blocks_dir.iterdir()):
+            raise FileNotFoundError("Bitcoin blocks directory 'bt_chain_blocks' is empty.")
+
+        print("Bitcoin blocks directory 'bt_chain_blocks' found.")
+
+        # 2. Compile Java off-chain scanner
+        project_dir = Path("offchain-scanner")
+
         subprocess.run(
-            ["cp", "-r", str(bitcoin_blocks_src) + "/.", "bt_chain_blocks/"],
+            ["mvn", "clean", "package"],
+            cwd=project_dir,
             check=True
         )
 
-        # 3. Go to the Java project directory and compile
-        project_dir = Path("offchain-scanner")
-        subprocess.run(["mvn", "clean", "package"], cwd=project_dir, check=True)
-
-        # 4. Run the generated .jar file
+        # 3. Run generated .jar file
         subprocess.run([
             "java",
             "-jar",
@@ -51,13 +58,15 @@ def offchain_scanner():
 
         print("Off-chain scan completed successfully.")
 
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        raise
+
     except subprocess.CalledProcessError as e:
         print(f"Error while executing the command: {e}")
         raise
 
 def venv_setup():
-    """Create Python virtual environment and install dependencies."""
-
     venv_path = Path("venv")
     if not venv_path.exists():
         print("\n== Creating virtual environment ==")
@@ -82,8 +91,6 @@ def venv_activate():
     return Path("venv") / "bin" / "python3"
 
 def initialize_chain():
-    """Clean Geth data and initialize the blockchain."""
-
     # Delete Geth data and socket
     subprocess.run(
         f"rm -rf {CHAINDATA_DIR}/geth && rm -f {CHAINDATA_DIR}/geth.ipc",
@@ -102,7 +109,6 @@ def initialize_chain():
     subprocess.run(cmd, check=True)
 
 def start_chain():
-    """Start the local geth node."""
     cmd = [
         "geth",
         "--datadir", CHAINDATA_DIR,
@@ -120,7 +126,6 @@ def start_chain():
     subprocess.run(cmd)
 
 def deployment_setup():
-    """Run the setup using the virtual environment Python."""
     python = venv_activate()
 
     # Delete state files and run script
@@ -129,22 +134,18 @@ def deployment_setup():
     subprocess.run([python, "python/setup.py"])
 
 def oracle_daemon():
-    """Run the oracle daemon using the virtual environment Python."""
     python = venv_activate()
     subprocess.run([python, "python/oracle_daemon.py"])
 
 def auto_voter():
-    """Run the auto-voter using the virtual environment Python."""
     python = venv_activate()
     subprocess.run([python, "python/auto_voter.py"])
 
 def demo():
-    """Run the demo using the virtual environment Python."""
     python = venv_activate()
     subprocess.run([python, "python/demo.py"])
 
 def geth_attach():
-    """Open the Geth JavaScript console."""
     subprocess.run(["geth", "attach", CHAIN_URL])
 
 # -----------------------------------------------------------------------------
@@ -152,7 +153,7 @@ def geth_attach():
 # -----------------------------------------------------------------------------
 
 MENU_ACTIONS = {
-    "1": ("Copy blocks and run Offchain Scanner (run once)", offchain_scanner),
+    "1": ("Run Offchain Scanner (run once)", offchain_scanner),
     "2": ("Setup Python venv (run once)", venv_setup),
     "3": ("Initialize Geth chain (run once)", initialize_chain),
     "4": ("Start Geth chain", start_chain),
@@ -203,10 +204,6 @@ def main():
             if action is None:
                 print("Invalid option.")
                 continue
-
-            #_, func = action
-            #print_header(action[0])
-            #func()
 
             title, func = action
             print_header(title)

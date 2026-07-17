@@ -232,6 +232,13 @@
 	\def\ttitle{#2}%
 }
 \DeclareDocumentCommand{\author}{m}{\newcommand{\authorname}{#1}\renewcommand{\@author}{#1}}
+
+\NewDocumentCommand{\studentone}{m}{\newcommand{\studentonename}{#1}}
+\NewDocumentCommand{\studentoneid}{m}{\newcommand{\studentoneidnumber}{#1}}
+
+\NewDocumentCommand{\studenttwo}{m}{\newcommand{\studenttwoname}{#1}}
+\NewDocumentCommand{\studenttwoid}{m}{\newcommand{\studenttwoidnumber}{#1}}
+
 \NewDocumentCommand{\supervisor}{m}{\newcommand{\supname}{#1}}
 \NewDocumentCommand{\examiner}{m}{\newcommand{\examname}{#1}}
 \NewDocumentCommand{\degree}{m}{\newcommand{\degreename}{#1}}

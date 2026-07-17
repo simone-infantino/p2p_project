@@ -1,12 +1,11 @@
 % Chapter 1
 
-\chapter{Intro and Implementation Choices} % Main chapter title
-\label{Chapter1} % For referencing the chapter elsewhere, use \ref{Chapter1} 
-\setlength{\parindent}{0pt} % Rimuove il rientro di paragrafo
+\chapter{Intro and Implementation Choices}
+\label{Chapter1}
+\setlength{\parindent}{0pt}
 
 %----------------------------------------------------------------------------------------
 
-% Define some commands to keep the formatting separated from the content 
 \newcommand{\keyword}[1]{\textbf{#1}}
 \newcommand{\tabhead}[1]{\textbf{#1}}
 \newcommand{\code}[1]{\texttt{#1}}
@@ -16,80 +15,44 @@
 %----------------------------------------------------------------------------------------
 \section{Smart Contract Implementation}
 
-The decentralized lending service is implemented through a set of Solidity smart contracts developed and tested using the Hardhat framework. The main goal of the implementation is to provide a lending platform where contributors can supply funds, applicants can request loans backed by Bitcoin collateral information, and the community can participate in the approval process through a voting mechanism.
-
-The smart contract architecture is composed of three main components: the \texttt{LendingService} contract, the \texttt{Loan} contract, and the \texttt{BitcoinOracle} contract. The separation of responsibilities between these contracts improves modularity and allows each component to manage a specific part of the protocol logic.
+The decentralized lending platform is implemented in Solidity and developed using the Hardhat framework with the Viem interaction layer.
+Its architecture consists of three smart contracts: \texttt{LendingService}, which manages the protocol; \texttt{Loan}, which represents individual loans; and \texttt{BitcoinOracle}, which provides Bitcoin collateral information. This separation improves modularity and simplifies maintenance.
 
 %----------------------------------------------------------------------------------------
 \section{Lending Service Architecture}
 
-The \texttt{LendingService} contract represents the core of the decentralized lending protocol. It manages the contributor liquidity pool, loan proposals, voting mechanism, compensation system, and the interaction with the oracle.
+The \texttt{LendingService} contract manages liquidity, loan proposals, voting, contributor balances, and oracle interaction. Rather than storing all loans internally, each approved proposal deploys an independent \texttt{Loan} contract containing its own state.
 
-A main design choice was to separate the global lending logic from individual loans. Instead of storing all loan information inside a single contract, each approved proposal generates a new independent \texttt{Loan} contract. This approach allows every loan to maintain its own state, including the applicant, principal amount, repayment status, expiration block, and contributors involved.
-
-The contract maintains the amount deposited by each contributor through the \texttt{deposited} mapping and tracks the funds currently allocated to active loans through the \texttt{locked} mapping. This distinction allows contributors to withdraw only the funds that are not committed to ongoing loans.
-
-The deposit mechanism requires a minimum contribution defined by the \texttt{MIN\_DEPOSIT} constant. Contributors are stored inside an array to allow iteration during operations such as liquidity evaluation and vote weighting. When a contributor no longer has available funds or locked positions, the address is removed from the contributor list to reduce unnecessary storage usage.
+Contributor funds are divided into available deposits and locked liquidity, ensuring that only uncommitted funds can be withdrawn. A minimum deposit is required to participate, and inactive contributors are removed from the registry to reduce storage costs.
 
 %----------------------------------------------------------------------------------------
 \section{Loan Proposal and Voting Mechanism}
 
-Loan creation follows a proposal-based approach. Applicants submit a proposal containing the requested amount, interest rate, duration, and Bitcoin address used as collateral reference. Each proposal remains open for a fixed number of blocks, defined by the \texttt{PROPOSAL\_VOTING\_PERIOD} constant.
+Applicants submit loan proposals specifying the requested amount, interest rate, duration, and Bitcoin collateral address. Proposals remain open for a fixed voting period during which contributors vote with a weight proportional to their available liquidity.
 
-Only contributors with available deposited funds can participate in the voting process. Votes are weighted according to the contributor's disposable liquidity rather than using a simple one-address-one-vote mechanism. This choice prevents contributors with very small deposits from having the same influence as contributors providing a larger amount of liquidity.
-
-When the voting period expires, the proposal is evaluated through multiple conditions:
-\begin{itemize}
-	\item the lending pool must contain enough disposable liquidity;
-	\item the Bitcoin collateral value retrieved from the oracle must satisfy the liquidity requirement;
-	\item the weighted approval votes must exceed the rejection weight.
-\end{itemize}
-
-If all conditions are satisfied, the service creates a new \texttt{Loan} contract and locks the required funds proportionally among the contributors.
+A proposal is approved only if sufficient liquidity is available, the Bitcoin balance provided by the oracle satisfies the collateral requirement, and approval votes exceed rejection votes. Successful proposals generate a new \texttt{Loan} contract and lock contributor funds proportionally.
 
 %----------------------------------------------------------------------------------------
 \section{Loan Contract Design}
 
-The \texttt{Loan} contract represents a single lending agreement. It is deployed dynamically by the \texttt{LendingService} contract and receives the collected principal amount during construction. After deployment, the principal is immediately transferred to the applicant.
+Each \texttt{Loan} contract represents a single lending agreement and transfers the requested funds to the borrower immediately after deployment.
 
-The contract stores immutable information about the loan, including:
-\begin{itemize}
-	\item applicant address;
-	\item principal amount;
-	\item interest rate;
-	\item loan duration;
-	\item collateral percentage;
-	\item Bitcoin address associated with the collateral.
-\end{itemize}
+The contract stores immutable loan parameters, including the borrower, principal, interest rate, duration, collateral ratio, and Bitcoin address. Repayments can be partial or complete and are distributed proportionally between principal and interest, with contributor rewards and compensation handled automatically.
 
-Using immutable variables for these parameters prevents modifications after deployment and reduces unnecessary storage operations.
-
-The repayment mechanism allows partial or complete repayments. Each payment is divided proportionally into principal repayment and interest according to the configured interest rate. Principal repayments are distributed back to contributors, while interest payments are divided between contributor gains and the compensation pool.
-
-The contributors participating in a loan are stored in a sorted order based on the initially locked amount. This ordering is used during repayment distribution, allowing refunds to be processed according to the initial contribution size.
+The contract also stores the contributors participating in the loan together with their locked amounts, allowing repayments to be distributed proportionally.
 
 %----------------------------------------------------------------------------------------
 \section{Bitcoin Oracle Integration}
 
-The lending protocol requires external Bitcoin information to evaluate whether a loan proposal has sufficient collateral. Since Ethereum smart contracts cannot directly access external blockchain data, a dedicated \texttt{BitcoinOracle} contract was implemented.
+The \texttt{BitcoinOracle} contract supplies Bitcoin balance information required to validate collateral. Applicants may request an update by paying a minimum fee, while an off-chain oracle service scans the Bitcoin blockchain and the oracle owner submits the updated balances on-chain.
 
-The oracle stores Bitcoin balances associated with Bitcoin addresses represented as byte arrays. Applicants can request an update by paying a minimum fee, while the oracle owner is responsible for pushing updated balances after performing the off-chain scan.
-
-The separation between the request and update phases allows the blockchain component to remain independent from the off-chain Bitcoin data acquisition process. The \texttt{deploymentBlock} variable is also stored to support the off-chain service in identifying the starting point for synchronization.
+This design separates on-chain logic from external data acquisition, with only the oracle owner authorized to update stored balances. The immutable deployment block is also stored to allow the off-chain service to resume synchronization from the correct point.
 
 %----------------------------------------------------------------------------------------
 \section{Security and Administrative Choices}
 
-The contracts include several mechanisms to improve security and maintainability.
+The contracts adopt a two-step ownership transfer mechanism for both the lending service and the oracle to prevent accidental administrative changes. Both contracts also support controlled termination, while the lending service additionally enables migration to a successor contract once all active loans have been completed.
 
-The lending service implements an administrative mechanism based on a two-step ownership transfer. Instead of immediately changing the administrator, the current administrator nominates a pending administrator who must explicitly accept the role. This prevents accidental transfers to incorrect addresses.
+The lending service also supports controlled protocol migration by allowing termination only after all active loans are completed. During migration, the remaining Ether balance is transferred to a designated successor contract. Callback functions enable communication between \texttt{Loan} and \texttt{LendingService} while preserving modularity.
 
-A similar ownership transfer mechanism is implemented in the oracle contract.
-
-The lending service also includes a termination mechanism that requires a successor contract address and prevents termination while active loans exist. This allows a future migration to a new contract version without leaving unresolved loans.
-
-The implementation also includes callback functions between the \texttt{Loan} and \texttt{LendingService} contracts. These callbacks are used to notify the service about successful repayments, contributor refunds, interest collateral, and loan outcomes while keeping the two contracts logically separated.
-
-Finally, the contract suite includes a vulnerable version of the lending service and a dedicated reentrancy attacker contract used during testing. These contracts are used to evaluate the impact of reentrancy attacks and validate the effectiveness of the adopted security modifications.
-
-%----------------------------------------------------------------------------------------
+Finally, the project includes intentionally vulnerable contracts and a reentrancy attacker used to evaluate security measures and validate protection against reentrancy attacks.
