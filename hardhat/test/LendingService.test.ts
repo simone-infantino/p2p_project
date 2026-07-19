@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseEther, zeroAddress } from "viem";
+import { parseEther } from "viem";
 import { anyValue } from "@nomicfoundation/hardhat-viem-assertions/predicates";
 import { viem, networkHelpers, deploy_service, fund, approve_loan, BTC } from "./helpers.js";
 
@@ -96,7 +96,7 @@ describe("resolve_proposal cases", () => {
   it("rejects when disposable pool is insufficient", async () => {
     const context = await networkHelpers.loadFixture(deploy_service);
     await context.service.write.deposit({ account: context.alice.account, value: parseEther("1") });
-    const { approved, loan_addr } = await approve_loan(context, { amount: parseEther("5"), rate: 10, duration: 100n });
+    const { approved } = await approve_loan(context, { amount: parseEther("5"), rate: 10, duration: 100n });
     assert.equal(approved, false);
   });
 

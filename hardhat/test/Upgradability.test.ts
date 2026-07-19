@@ -1,13 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { viem, networkHelpers, deploy_service, BTC, ONE_BTC_SATS, events_logs } from "./helpers.js";
+import { viem, networkHelpers, deploy_service, BTC, ONE_BTC_SATS } from "./helpers.js";
 import { parseEther, parseGwei, getAddress } from "viem";
+import { anyValue } from "@nomicfoundation/hardhat-viem-assertions/predicates";
 
 const MINI_ORACLE_REQUEST_FEE = parseGwei("0.1") * 50_000n;
 
 describe("Upgradability & termination — LoanService", () => {
   it("set_oracle swaps the oracle the service points at", async () => {
-    const { service, oracle, admin, alice, applicant, public_client } = await networkHelpers.loadFixture(deploy_service);
+    const { service, oracle, admin, alice, applicant } = await networkHelpers.loadFixture(deploy_service);
 
     const oracle2 = await viem.deployContract("BitcoinOracle", [MINI_ORACLE_REQUEST_FEE]);
     await oracle.write.push_balance([BTC, 1n]);                  //old: very little pushed funds
@@ -19,9 +20,8 @@ describe("Upgradability & termination — LoanService", () => {
     await service.write.vote([0n, true], { account: alice.account });
     await networkHelpers.mine(13);
 
-    const hash = await service.write.resolve_proposal([0n], { account: applicant.account });
-    const logs = await events_logs(public_client, service.abi, hash, "proposal_resolved");
-    assert.equal(logs[0].args.approved, true);  // approved only because it read the new oracle's balance
+    // approved only because it read the new oracle's balance
+    await viem.assertions.emitWithArgs( service.write.resolve_proposal([0n], { account: applicant.account }), service, "proposal_resolved", [0n, true, anyValue] );
   });
 
   it("set_oracle is admin-only and rejects the zero address", async () => {

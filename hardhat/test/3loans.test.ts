@@ -5,7 +5,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseEther } from "viem";
+import { parseEther, zeroAddress } from "viem";
 import { viem, deploy_service, events_logs, total_owed, networkHelpers, BTC, ONE_BTC_SATS } from "./helpers.js";
 
 describe("three simultaneous proposals", () => {
@@ -56,10 +56,7 @@ describe("three simultaneous proposals", () => {
     //enough disposable check and contributors have all voted approve, so the only rejection reason can be the liquidity check 
     assert.ok(cum_disp >= parseEther("6"));
 
-    const receipt_C = await service.write.resolve_proposal([2n], { account: applicant.account });
-    const logs_C = await events_logs(public_client, service.abi, receipt_C, "proposal_resolved");
-    assert.equal(logs_C[0].args.approved, false);
-    assert.equal(logs_C[0].args.loan_contract.toLowerCase(), "0x0000000000000000000000000000000000000000");
+    await viem.assertions.emitWithArgs( service.write.resolve_proposal([2n], { account: applicant.account }), service, "proposal_resolved", [2n, false, zeroAddress] );
 
     await loan_B.write.repay({ account: applicant.account, value: parseEther("1") });
     assert.ok((await service.read.compensation_pool()) > 0n);
@@ -71,9 +68,8 @@ describe("three simultaneous proposals", () => {
 
     const owed_before = await loan_B.read.remaining_due([alice.account.address]);
     assert.ok(owed_before > 0n);
-    const claim_receipt = await service.write.claim_compensation([b_addr], { account: alice.account });
-    const claim_logs = await events_logs(public_client, service.abi, claim_receipt, "compensation_claimed");
-    assert.equal(claim_logs.length, 1);
+    await viem.assertions.emit( service.write.claim_compensation([b_addr], { account: alice.account }), service, "compensation_claimed" );
+
     assert.equal(await loan_B.read.failed_marked(), true);
     assert.ok((await loan_B.read.remaining_due([alice.account.address])) < owed_before);
 

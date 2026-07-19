@@ -1,7 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { parseEther, zeroAddress } from "viem";
-import { viem, deploy_service, fund, approve_loan, total_owed, events_logs, networkHelpers, BTC, ONE_BTC_SATS } from "./helpers.js";
+import { anyValue } from "@nomicfoundation/hardhat-viem-assertions/predicates";
+import { viem, deploy_service, fund, approve_loan, total_owed, networkHelpers, BTC, ONE_BTC_SATS } from "./helpers.js";
 
 describe("Scenario 1 — loan accepted and fully repaid — 1 loan", () => {
   it("marks the loan successful, deactivates it, and funds the compensation pool", async () => {
@@ -65,9 +66,7 @@ describe("Scenario 3 — loan not accepted — 0 loans", () => {
     await context.service.write.vote([0n, true], { account: context.alice.account });
     await context.service.write.vote([0n, false], { account: context.bob.account });
     await networkHelpers.mine(13);
-    const receipt = await context.service.write.resolve_proposal([0n], { account: context.applicant.account });
-    const logs = await events_logs(context.public_client, context.service.abi, receipt, "proposal_resolved");
-    assert.equal(logs[0].args.approved, false);
+    await viem.assertions.emitWithArgs(context.service.write.resolve_proposal([0n], { account: context.applicant.account }), context.service, "proposal_resolved", [0n, false, anyValue]);
   });
 
   it("reverts: resolved too early / by the wrong caller", async () => {
@@ -134,10 +133,8 @@ describe("Scenario 6 — loan not repaid, contributor compensated (funder loan r
     assert.equal(await r.loan!.read.is_failed(), true);
 
     const owed_before = await r.loan!.read.remaining_due([context.alice.account.address]);
-    const claim_receipt = await context.service.write.claim_compensation([r.loan_addr], { account: context.alice.account });
-    const claim_logs = await events_logs(context.public_client, context.service.abi, claim_receipt, "compensation_claimed");
+    await viem.assertions.emit( context.service.write.claim_compensation([r.loan_addr], { account: context.alice.account }), context.service, "compensation_claimed" );
 
-    assert.equal(claim_logs.length, 1);
     assert.equal(await r.loan!.read.failed_marked(), true);
     assert.ok((await r.loan!.read.remaining_due([context.alice.account.address])) < owed_before);
   });
@@ -221,9 +218,7 @@ describe("Scenario 10 — failed loan, compensation pool sufficient — 2 loans 
     const owed = await r.loan!.read.remaining_due([context.alice.account.address]);
     assert.ok(pool >= owed);
 
-    const claim_receipt = await context.service.write.claim_compensation([r.loan_addr], { account: context.alice.account });
-    const claim_logs = await events_logs(context.public_client, context.service.abi, claim_receipt, "compensation_claimed");
-    assert.equal(claim_logs.length, 1);
+    await viem.assertions.emit( context.service.write.claim_compensation([r.loan_addr], { account: context.alice.account }), context.service, "compensation_claimed" );
     assert.equal(await r.loan!.read.remaining_due([context.alice.account.address]), 0n);
     assert.equal(await r.loan!.read.failed_marked(), true);
   });

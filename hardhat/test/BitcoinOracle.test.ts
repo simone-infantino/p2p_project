@@ -45,11 +45,8 @@ describe("BitcoinOracle", () => {
   });
 
   it("withdraw_fees moves accumulated fees to the recipient", async () => {
-    const { oracle, alice, bob, min_fee, public_client } = await networkHelpers.loadFixture(deploy_service);
+    const { oracle, alice, bob, min_fee } = await networkHelpers.loadFixture(deploy_service);
     await oracle.write.request_update([BTC], { account: alice.account, value: min_fee });
-    const before = await public_client.getBalance({ address: bob.account.address });
-    await oracle.write.withdraw_fees([bob.account.address]);
-    const after = await public_client.getBalance({ address: bob.account.address });
-    assert.equal(after - before, min_fee);
+    await viem.assertions.balancesHaveChanged( oracle.write.withdraw_fees([bob.account.address]), [{ address: bob.account.address, amount: min_fee }] );
   });
 });
