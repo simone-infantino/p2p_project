@@ -5,49 +5,44 @@
 \setlength{\parindent}{0pt}
 
 %----------------------------------------------------------------------------------------
-\section{Requirements} The project was developed and tested using the following software versions:
-\begin{itemize}
-	\item \textbf{Geth}: 1.13.15-stable-c5ba367e
-	\item \textbf{Node.js}: v22
-	\item \textbf{Hardhat}: v3.9.0
-	\item \textbf{Solidity}: v0.8.28
-	\item \textbf{Apache Maven}: v3.9.9
-\end{itemize}
+\section{Requirements}
+The project was developed and tested using \textbf{Geth} version \texttt{1.13.15-stable-c5ba367e}, \textbf{Node.js} version \texttt{v22}, \textbf{Hardhat} version \texttt{v3.9.0}, \textbf{Solidity} version \texttt{v0.8.28}, and \textbf{Apache Maven} version \texttt{v3.9.9}.
 
-Before executing the project, the Bitcoin blockchain blocks required by the off-chain scanner must be manually copied into the \texttt{bt\_chain\_blocks} directory located in the project root.
+%Before executing the project, the Bitcoin blockchain blocks required by the off-chain scanner must be manually copied into the \texttt{bt\_chain\_blocks} directory located in the project root.
+
+The Bitcoin blockchain blocks required are \texttt{blk00000}, \texttt{blk00001}, \texttt{blk00002} and must be manually copied into the \texttt{bt\_chain\_blocks} directory together with the \texttt{xor.dat} file.
 
 %----------------------------------------------------------------------------------------
 \section{Project Structure}
 
-The project is organized into independent modules that separate blockchain data, smart contracts, off-chain services, deployment scripts, and utilities.
-
-\begin{itemize}
-	\item \textbf{bt\_chain\_blocks/}: local Bitcoin blockchain used by the off-chain scanner.
-	\item \textbf{chain/}: local Ethereum configuration (genesis, accounts, and Geth data).
-	\item \textbf{hardhat/}: Solidity smart contracts and deployment scripts.
-	\item \textbf{offchain-scanner/}: Java application that extracts UTXO data from the Bitcoin blockchain.
-	\item \textbf{python/}: Python scripts for deployment, oracle management, automated voting, and demonstration.
-	\item \textbf{state/}: stores deployment state shared by the Python components.
-	\item \textbf{tool.py}: orchestration script used to manage the entire system.
-	\item \textbf{venv/}: Python virtual environment with project dependencies.
-\end{itemize}
+The \textbf{bt\_chain\_blocks/} directory contains the local Bitcoin blockchain blocks, while the \textbf{chain/} directory stores the local Ethereum configuration, including the genesis file, accounts, and Geth data. The \textbf{hardhat/} directory contains the Solidity smart contracts and tests. The \textbf{offchain-scanner/} module includes the Java application responsible for extracting UTXO data from the Bitcoin blockchain. The \textbf{python/} directory provides scripts for deployment, oracle management, auto voting, and system demo, while the \textbf{state/} directory stores the deployment state shared by the Python scripts. The \textbf{tool.py} script is an orchestration tool for managing the entire system, and the \textbf{venv/} directory contains the Python virtual environment and dependencies.
 
 %----------------------------------------------------------------------------------------
 \section{Orchestration Script}
 
 The \texttt{tool.py} script provides an interactive command line interface to automate the setup and execution of the system.
-The available operations are:
+The operations are to be executed following the order of the list:
 
 \begin{enumerate}
-	\item Run the Off-chain Scanner.
-	\item Create the Python virtual environment and install dependencies.
-	\item Initialize the local Ethereum blockchain.
-	\item Start the Geth node with mining and exposed HTTP JSON-RPC interface.
-	\item Create accounts and deploy contracts.
-	\item Start the Oracle Daemon.
-	\item Start the Auto Voter.
-	\item Run the lending demonstration.
-	\item Attach to the running Geth console.
+	\item \textbf{Run the Off-chain Scanner.} %Compiles the Java scanner using Maven, and generates the UTXO snapshot required by the protocol. This step only needs to be executed once.
+	
+	\item \textbf{Setup the Python virtual environment.} %A Python virtual environment is created (if not already available) and the required dependencies are installed automatically.
+	
+	\item \textbf{Initialize the local Ethereum blockchain.} %Existing Geth chain data are removed and a new blockchain is initialized from the provided genesis configuration.
+	
+	\item \textbf{Start the local Geth node} (keep alive). %Launches the private Ethereum blockchain with mining enabled, unlocks the predefined account, and exposes the HTTP JSON-RPC interface used by the application.
+	
+	\item \textbf{Deploy the application.} %Executes the deployment script, creates the required accounts, deploys all smart contracts, initializes the protocol state, and stores deployment information inside the \texttt{state/} directory.
+	
+	\item \textbf{Start the Oracle Daemon} (keep alive). %Launches the off-chain oracle responsible for monitoring blockchain events and providing external information required by the protocol.
+	
+	\item \textbf{Start the Auto Voter} (keep alive). %Runs the automated voting component that simulates validator participation in governance decisions.
+	
+	\item \textbf{Run the demonstration} (keep alive). %Executes a complete lending workflow demonstrating the interaction among borrowers, lenders, smart contracts, and off-chain services.
+	
+	\item \textbf{Attach to Geth.} %Opens the JavaScript console connected to the running Ethereum node, allowing direct inspection of accounts, transactions, and contract state.
 \end{enumerate}
 
-The recommended execution order follows the list above. Long-running services (Geth, Oracle Daemon, and Auto Voter) must remain active while the system is running; therefore, each of them should be started in a separate terminal by executing \texttt{python3 tool.py} and selecting the corresponding option.
+%The recommended execution order follows the list above. Long-running services (Geth, Oracle Daemon, and Auto Voter) must remain active while the system is running; therefore, each of them should be started in a separate terminal by executing \texttt{python3 tool.py} and selecting the corresponding option.
+
+%----------------------------------------------------------------------------------------

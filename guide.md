@@ -341,7 +341,7 @@ Workflow
 3) Deployment (run once) to initialize accounts, funds, contracts
 4) Start Oracle Daemon
 5) Start Auto Voter
-6) Start Demo (lending workflow simulation)
+6) Start Demo
 
 Other
 7) Attach to Geth (query the chain)

@@ -7,7 +7,7 @@ interface Oracle_Interface {
     function get_balance(string calldata BTC_addr) external view returns (uint256);
 }
 
-interface Lending_Service_Migration_Interface {
+interface Loan_Service_Migration_Interface {
     function import_state(
         address[] calldata contributors,
         uint256[] calldata deposits,
@@ -389,7 +389,7 @@ contract LoanService is Loan_Service_Interface {
             deposits[i] = deposited[c];
         }
 
-        Lending_Service_Migration_Interface(successor).import_state( contributors, deposits, total_deposited, compensation_pool, collateral_percent);
+        Loan_Service_Migration_Interface(successor).import_state( contributors, deposits, total_deposited, compensation_pool, collateral_percent);
 
         //migrate eth balance to successor
         uint256 bal = address(this).balance;

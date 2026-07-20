@@ -140,7 +140,7 @@ def deploy_oracle(oracle_acct):
     return oracle, gas, min_fee
 
 
-def deploy_lending_service(admin_acct, oracle):
+def deploy_loan_service(admin_acct, oracle):
     ls_abi, ls_bytecode = load_contract_artifact("LoanService")
 
     service = deploy_contract(admin_acct, ls_abi, ls_bytecode, oracle.address)
@@ -197,7 +197,7 @@ def main():
     print(f"  pushBalance gas ~{gas}, minimumFee set to {min_fee} wei")
 
     print("\nDeploying LoanService from the admin account ...")
-    service = deploy_lending_service(admin_acct, oracle)
+    service = deploy_loan_service(admin_acct, oracle)
     print(f"  LoanService @ {service.address}")
 
     save_deployment_file(oracle, oracle_acct, min_fee, service, admin_acct, contributors, applicants)

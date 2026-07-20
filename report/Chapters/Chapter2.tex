@@ -7,32 +7,105 @@
 %----------------------------------------------------------------------------------------
 \section{Gas Evaluation}
 
-Gas consumption was evaluated using the Hardhat testing environment. The analysis focused on the main protocol operations, including deposits, proposal approval, loan creation, repayments, and compensation claims.
+\begin{table}[ht]
+	\centering
+	\caption{BitcoinOracle Gas consumption.}
+	\label{tab:bitcoinoracle_gas}
+	\begin{tabular}{lrrrrr}
+		\toprule
+		\textbf{Function name} & \textbf{Min} & \textbf{Average} & \textbf{Median} & \textbf{Max} \\
+		\midrule
+		push\_balance         & 31616  & 49857  & 51516  & 51516  \\
+		transfer\_ownership   & 47792  & 47792  & 47792  & 47792  \\
+		terminate             & 46264  & 46264  & 46264  & 46264  \\
+		request\_update       & 29352  & 29352  & 29352  & 29352  \\
+		accept\_ownership     & 28218  & 28218  & 28218  & 28218  \\
+		get\_balance          & 24845  & 24845  & 24845  & 24845  \\
+		\midrule
+		Deployment            & 679532 & 679532 & 679532 & 679532 \\
+		\bottomrule
+	\end{tabular}
+\end{table}
 
-To improve efficiency, the contracts minimize storage writes and use \texttt{immutable} variables for loan parameters that never change after deployment. The modular architecture, where each approved proposal deploys a dedicated \texttt{Loan} contract, increases deployment cost but simplifies the main contract and improves maintainability.
+\texttt{push\_balance} ranges from 31000 to 51000 gas. The spread is purely storage pricing, since recording a Bitcoin address the oracle has never seen allocates a fresh slot (~20000 gas). \texttt{get\_balance} reports 24845 gas, but ~21000 of that is the base transaction fee. This difference, shown also in the other two contracts' gas evaluations, highlights how the costs are divided: reads are cheaper, writes are more expensive, especially cold writes.
 
-Some functions iterate over the contributor list to compute voting weights, available liquidity, and fund allocation, causing gas costs to grow with the number of contributors. This trade-off was considered acceptable for the project. Oracle integration is also gas-efficient because Bitcoin data are processed off-chain and only the required balances are stored on Ethereum.
+\begin{table}[ht]
+	\centering
+	\caption{Loan Gas consumption.}
+	\label{tab:loan_gas}
+	\begin{tabular}{lrrrr}
+		\toprule
+		\textbf{Function name} & \textbf{Min} & \textbf{Average} & \textbf{Median} & \textbf{Max} \\
+		\midrule
+		repay                & 132346 & 162272 & 163834 & 209640 \\
+		%remaining\_due       & 24050  & 24060  & 24062  & 24062  \\
+		is\_failed           & 21540  & 23458  & 23650  & 23650  \\
+		%failed\_marked       & 23398  & 23398  & 23398  & 23398  \\
+		%successful           & 23385  & 23385  & 23385  & 23385  \\
+		%total\_base\_repaid  & 23382  & 23382  & 23382  & 23382  \\
+		is\_expired          & 21430  & 21430  & 21430  & 21430  \\
+		%interest\_rate       & 21356  & 21356  & 21356  & 21356  \\
+		%applicant            & 21325  & 21325  & 21325  & 21325  \\
+		%lent\_amount         & 21305  & 21305  & 21305  & 21305  \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+\texttt{repay} is by far the most expensive operation at ~162000 gas, but little of that is \texttt{repay} itself: the reporter only calculates external function calls. The cost sits in \texttt{distribute\_base} and \texttt{distribute\_interest}, each performing a payment and an overall increasing cost based on the number of contributors. At the other end we find \texttt{is\_expired}, of which 21000 is the base transaction fee: it compares block.number against two \texttt{immutable} fields held in bytecode rather than storage.
+
+\begin{table}[H]
+	\centering
+	\caption{LoanService Gas consumption.}
+	\label{tab:loanservice_gas}
+	\begin{tabular}{lrrrr}
+		\toprule
+		\textbf{Function name} & \textbf{Min} & \textbf{Average} & \textbf{Median} & \textbf{Max} \\
+		\midrule
+		resolve\_proposal     & 63294  & 981881  & 1235906 & 1337857 \\
+		submit\_proposal      & 189584 & 204243  & 206684  & 206708  \\
+		terminate             & 75413  & 136047  & 136047  & 196681  \\
+		%deposit               & 123962 & 131882  & 138262  & 138262  \\
+		%claim\_compensation   & 92069  & 96144   & 96959   & 96959   \\
+		%vote                  & 56908  & 56913   & 56910   & 56922   \\
+		%set\_successor        & 48698  & 48698   & 48698   & 48698   \\
+		%withdraw              & 45088  & 47792   & 47792   & 50495   \\
+		%transfer\_admin       & 47777  & 47777   & 47777   & 47777   \\
+		set\_migration\_source& 46176  & 46176   & 46176   & 46176   \\
+		set\_oracle           & 33202  & 33202   & 33202   & 33202   \\
+		accept\_admin         & 28262  & 28262   & 28262   & 28262   \\
+		%is\_contributor       & 24097  & 24097   & 24097   & 24097   \\
+		%active\_loan          & 24075  & 24075   & 24075   & 24075   \\
+		%locked                & 24040  & 24048   & 24052   & 24052   \\
+		%deposited             & 24018  & 24025   & 24030   & 24030   \\
+		%admin                 & 23489  & 23489   & 23489   & 23489   \\
+		%terminated            & 23482  & 23482   & 23482   & 23482   \\
+		%pending\_admin        & 23445  & 23445   & 23445   & 23445   \\
+		compensation\_pool    & 23438  & 23438   & 23438   & 23438   \\
+		%collateral\_percent   & 23422  & 23422   & 23422   & 23422   \\
+		%next\_proposal\_id    & 23395  & 23395   & 23395   & 23395   \\
+		%total\_deposited      & 23393  & 23393   & 23393   & 23393   \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+\texttt{resolve\_proposal} spans 68000 to ~982000 gas, and the gap is almost entirely one thing: a rejected proposal returns before any Loan exists, while an approved one deploys a dedicated Loan contract. There is also the cost of sorting and locking each contributor's position which grows with the number of contributors. By contrast \texttt{accept\_admin} costs 28262. After the 21000 base we can conclude that the real cost of the function is around 7k gas.
 
 %----------------------------------------------------------------------------------------
 \section{Reentrancy Protection}
 
-The project includes both a secure implementation (\texttt{LendingService.sol}) and an intentionally vulnerable version (\texttt{LendingServiceVulnerable.sol}) used to demonstrate a reentrancy attack.
+The project includes both a secure implementation (\texttt{LoanService.sol}) and an intentionally vulnerable version (\texttt{LoanServiceVulnerable.sol}) used to demonstrate a reentrancy attack.
 
 The vulnerability affects the \texttt{claim\_compensation()} function, where the vulnerable contract transfers Ether before updating its internal state. A malicious contract can exploit this behavior by re-entering the function from its \texttt{receive()} callback while the previous execution is still in progress, allowing multiple compensation claims before the contributor's accounting information is updated.
-
 The secure implementation follows the Checks--Effects--Interactions pattern by updating the contract state before performing external transfers, preventing recursive calls from reusing outdated accounting information.
-
 The attack is implemented in \texttt{ReentrancyAttacker.sol} and validated through dedicated Hardhat tests, which confirm that the vulnerable contract can be exploited while the protected implementation resists the same attack.
 
 %----------------------------------------------------------------------------------------
 \section{Discussion of Malicious Strategies}
 
-Besides reentrancy, other potential attack scenarios were considered during the design of the protocol.
+When a loan is partially repaid, base is refunded to contributors in order of locked value, highest first. A partial repayment therefore fully refunds the largest lockholders before smaller ones receive anything. If the loan is only partially repaid and then fails, the contributors at the top of the list are made whole by real repayment, while those at the bottom are left owed and must rely on the compensation pool, which may be empty or insufficient.
 
-The voting mechanism is based on contributors' available liquidity, making voting influence proportional to the amount of funds supplied rather than assigning equal voting power to each address. This aligns voting power with the economic stake committed to the protocol.
+A contributor deliberately makes their locked value in a loan the largest, so they sit at the front of the refund order. Because locking is proportional to disposable value at resolution time, the attacker can do this by timing a large deposit just before \texttt{resolve\_proposal} is called on a proposal. When that loan is created, the attacker gets the biggest proportional lock, hence refund priority. If the applicant makes any partial repayment before the loan expires, the attacker will receive most of the base repayment while the honest smaller contributors get very little from the applicant and are pushed onto the much smaller compensation pool.
 
-Loan approval also depends on multiple independent conditions. In addition to a positive vote, sufficient liquidity must be available and the Bitcoin collateral value provided by the oracle must satisfy the required collateralization threshold. Combining these conditions prevents proposals from being approved solely through voting.
+Over many loans, the attacker systematically collects real repayments while honest contributors receive less than what they would have been repaid in a normal scenario. The attacker can then withdraw once the loan resolves, having been exposed to risk for only a short window.
 
-The protocol relies on a trusted oracle owner to submit correct Bitcoin balance updates. Since blockchain data are obtained off-chain, the oracle remains a trusted component whose correctness directly affects collateral evaluation.
-
-Although these measures improve the robustness of the system, they do not eliminate every possible attack vector. As with most decentralized applications, the overall security also depends on the correct behaviour of external components and administrative accounts.
+%----------------------------------------------------------------------------------------

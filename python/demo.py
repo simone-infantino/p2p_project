@@ -24,7 +24,7 @@ def load_contract_abi(name):
 
 btc_oracle = w3.eth.contract(
     address=Web3.to_checksum_address(DEPLOYMENT_FILE["oracle"]["address"]), abi=load_contract_abi("BitcoinOracle"))
-lending_service = w3.eth.contract(
+loan_service = w3.eth.contract(
     address=Web3.to_checksum_address(DEPLOYMENT_FILE["loanService"]["address"]), abi=load_contract_abi("LoanService"))
 LOAN_ABI = load_contract_abi("Loan")
 
@@ -138,13 +138,13 @@ def current_contributors():
 
 def print_snapshot(involved_applicants=None):
     for c, name in current_contributors():
-        deposited = w3.from_wei(lending_service.functions.deposited(c.address).call(), "ether")
-        locked = w3.from_wei(lending_service.functions.locked(c.address).call(), "ether")
+        deposited = w3.from_wei(loan_service.functions.deposited(c.address).call(), "ether")
+        locked = w3.from_wei(loan_service.functions.locked(c.address).call(), "ether")
         print(f"     {name:8} wallet: {get_eth_balance(c.address):8.3f}  deposited: {deposited}  locked: {locked}")
     for it in (involved_applicants or []):
         print(f"     {get_account_label(it):8} wallet: {get_eth_balance(it.address):8.3f}  (applicant)")
-    print(f"     Pool Collateral Percentage: {lending_service.functions.collateral_percent().call()}   "
-          f"Compensation Pool: {w3.from_wei(lending_service.functions.compensation_pool().call(),'ether')} ETH")
+    print(f"     Pool Collateral Percentage: {loan_service.functions.collateral_percent().call()}   "
+          f"Compensation Pool: {w3.from_wei(loan_service.functions.compensation_pool().call(),'ether')} ETH")
 
 
 def print_status_table():
@@ -164,7 +164,7 @@ def oracle_balance_wei_equivalent(btc_address) -> int:
 
 
 def rejection_reason(amount_wei, btc_address) -> str:
-    cumulative_disposable = sum(lending_service.functions.deposited(c.address).call() - lending_service.functions.locked(c.address).call()
+    cumulative_disposable = sum(loan_service.functions.deposited(c.address).call() - loan_service.functions.locked(c.address).call()
               for c, _ in current_contributors())
     if cumulative_disposable < amount_wei:
         return (f"INSUFFICIENT POOL — cumulative disposable "
@@ -185,21 +185,21 @@ def failure_reason(loan) -> str:
 
 def vote_non_bot_contributors(pid, approve=True):
     for c in [C1, C2] + ([new_contributor] if new_contributor is not None else []):
-        send_transaction(c, lending_service.functions.vote(pid, approve))
+        send_transaction(c, loan_service.functions.vote(pid, approve))
     print(f"   Demo cast {'APPROVE' if approve else 'REJECT'} for the non-bot contributors on #{pid}")
     time.sleep(3)   #give the auto-voter time to notice the proposal_submitted event
 
 
 def submit_and_resolve_proposal(name, applicant, amount, rate, duration, btc_address=BTC_GENESIS_ADDR, approve=True):
-    pid = lending_service.functions.next_proposal_id().call()
-    send_transaction(applicant, lending_service.functions.submit_proposal(to_wei(amount), rate, duration, btc_address))
+    pid = loan_service.functions.next_proposal_id().call()
+    send_transaction(applicant, loan_service.functions.submit_proposal(to_wei(amount), rate, duration, btc_address))
     print(f"   Proposal #{pid} submitted by {get_account_label(applicant)} "
           f"(amount: {amount}, rate: {rate}%, dur: {duration}, btc_address: {btc_address})")
     vote_non_bot_contributors(pid, approve=approve)
     mine_blocks(13)
 
-    receipt = send_transaction(applicant, lending_service.functions.resolve_proposal(pid))
-    event = lending_service.events.proposal_resolved().process_receipt(receipt)[0]["args"]
+    receipt = send_transaction(applicant, loan_service.functions.resolve_proposal(pid))
+    event = loan_service.events.proposal_resolved().process_receipt(receipt)[0]["args"]
     approved = event["approved"]
     if approved:
         print(f"   Proposal #{pid}: APPROVED")
@@ -211,8 +211,8 @@ def submit_and_resolve_proposal(name, applicant, amount, rate, duration, btc_add
 
 
 def submit_proposal_only(name, applicant, amount, rate, duration, btc_address=BTC_GENESIS_ADDR, approve=True):
-    pid = lending_service.functions.next_proposal_id().call()
-    send_transaction(applicant, lending_service.functions.submit_proposal(to_wei(amount), rate, duration, btc_address))
+    pid = loan_service.functions.next_proposal_id().call()
+    send_transaction(applicant, loan_service.functions.submit_proposal(to_wei(amount), rate, duration, btc_address))
     print(f"   Proposal #{pid} submitted by {get_account_label(applicant)} "
           f"(amount: {amount}, rate: {rate}%, dur: {duration}, btc_address: {btc_address})")
     vote_non_bot_contributors(pid, approve=approve)
@@ -222,8 +222,8 @@ def submit_proposal_only(name, applicant, amount, rate, duration, btc_address=BT
 def resolve_proposal_batch(submissions):
     mine_blocks(13)   #one shared mine past the voting period for every batched proposal
     for s in submissions:
-        receipt = send_transaction(s["applicant"], lending_service.functions.resolve_proposal(s["pid"]))
-        event = lending_service.events.proposal_resolved().process_receipt(receipt)[0]["args"]
+        receipt = send_transaction(s["applicant"], loan_service.functions.resolve_proposal(s["pid"]))
+        event = loan_service.events.proposal_resolved().process_receipt(receipt)[0]["args"]
         if event["approved"]:
             print(f"   Proposal #{s['pid']}: APPROVED")
             loan_contracts[s["name"]] = get_loan_contract(event["loan_contract"])
@@ -235,7 +235,7 @@ def resolve_proposal_batch(submissions):
 def claim_compensation(contributor, name, cname):
     loan = loan_contracts[name]
     before = w3.from_wei(loan.functions.remaining_due(contributor.address).call(), "ether")
-    send_transaction(contributor, lending_service.functions.claim_compensation(loan.address))
+    send_transaction(contributor, loan_service.functions.claim_compensation(loan.address))
     after = w3.from_wei(loan.functions.remaining_due(contributor.address).call(), "ether")
     print(f"   {cname} Claimed compensation on {name}: owed {before} -> {after} ETH")
 
@@ -248,13 +248,13 @@ def main():
 
     print("\nSETUP — three contributors deposit (C0 is the auto voter)")
     for c in (C0, C1, C2):
-        send_transaction(c, lending_service.functions.deposit(), value=to_wei(30))
+        send_transaction(c, loan_service.functions.deposit(), value=to_wei(30))
     print("After initial deposits")
     print_snapshot()
 
     print("\nNEW ACCOUNT — contributor that joins the pool")
     new_contributor = create_funded_account(40, "new contributor")
-    send_transaction(new_contributor, lending_service.functions.deposit(), value=to_wei(30))
+    send_transaction(new_contributor, loan_service.functions.deposit(), value=to_wei(30))
     print("After contributor deposits")
     print_snapshot()
 
@@ -341,7 +341,7 @@ def main():
     print_snapshot(involved_applicants=[applicants[0]])
 
     print("\nTIMELINE — a contributor withdraws part of their freed disposable value")
-    send_transaction(C2, lending_service.functions.withdraw(to_wei(3)))
+    send_transaction(C2, loan_service.functions.withdraw(to_wei(3)))
     print("   C2 withdrew 3 ETH")
     print("After withdrawal")
     print_snapshot()
