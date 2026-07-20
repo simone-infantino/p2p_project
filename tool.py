@@ -23,6 +23,35 @@ CHAIN_NET_ID = 202526
 # BLOCKCHAIN FUNCTIONS
 # -----------------------------------------------------------------------------
 
+def hardhat_setup():
+    project_dir = "hardhat"
+
+    try:
+        subprocess.run(
+            [
+                "npm",
+                "install",
+                "--save-dev",
+                "@nomicfoundation/hardhat-toolbox-viem"
+            ],
+            cwd=project_dir,
+            check=True
+        )
+
+        print("\n")
+
+        subprocess.run(
+            ["npx", "hardhat", "compile"],
+            cwd=project_dir,
+            check=True
+        )
+
+        print("Hardhat compilation completed successfully.")
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error while executing command: {e}")
+        raise
+
 def offchain_scanner():
     try:
         # 1. Check Bitcoin blocks directory
@@ -153,15 +182,16 @@ def geth_attach():
 # -----------------------------------------------------------------------------
 
 MENU_ACTIONS = {
-    "1": ("Run Offchain Scanner (run once)", offchain_scanner),
-    "2": ("Setup Python venv (run once)", venv_setup),
-    "3": ("Initialize Geth chain (run once)", initialize_chain),
-    "4": ("Start Geth chain", start_chain),
-    "5": ("Deployment (run once) to initialize accounts, funds, contracts", deployment_setup),
-    "6": ("Start Oracle Daemon", oracle_daemon),
-    "7": ("Start Auto Voter", auto_voter),
-    "8": ("Start Demo", demo),
-    "9": ("Attach to Geth (query the chain)", geth_attach),
+    "1": ("Run Hardhat setup (run once)", hardhat_setup),
+    "2": ("Run Offchain Scanner (run once)", offchain_scanner),
+    "3": ("Setup Python venv (run once)", venv_setup),
+    "4": ("Initialize Geth chain (run once)", initialize_chain),
+    "5": ("Start Geth chain", start_chain),
+    "6": ("Deployment (run once) to initialize accounts, funds, contracts", deployment_setup),
+    "7": ("Start Oracle Daemon", oracle_daemon),
+    "8": ("Start Auto Voter", auto_voter),
+    "9": ("Start Demo", demo),
+    "10": ("Attach to Geth (query the chain)", geth_attach),
 }
 
 def print_header(title):
@@ -173,11 +203,11 @@ def print_menu():
     print_header("Blockchain Utility")
 
     print("\nWorkflow")
-    for key in ("1", "2", "3", "4", "5", "6", "7", "8"):
+    for key in ("1", "2", "3", "4", "5", "6", "7", "8", "9",):
         print(f"{key}) {MENU_ACTIONS[key][0]}")
 
     print("\nOther")
-    for key in ("9",):
+    for key in ("10",):
         print(f"{key}) {MENU_ACTIONS[key][0]}")
     print("0|q) Exit")
 
