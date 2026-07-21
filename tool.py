@@ -23,6 +23,20 @@ CHAIN_NET_ID = 202526
 # BLOCKCHAIN FUNCTIONS
 # -----------------------------------------------------------------------------
 
+def npm_modules_setup():
+    project_dir = "hardhat"
+
+    try:
+        subprocess.run(
+            ["npm", "ci"],
+            cwd=project_dir,
+            check=True
+        )
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error while executing command: {e}")
+        raise
+
 def hardhat_build():
     project_dir = "hardhat"
 
@@ -36,6 +50,10 @@ def hardhat_build():
     except subprocess.CalledProcessError as e:
         print(f"Error while executing command: {e}")
         raise
+
+def hardhat_setup_and_build():
+    npm_modules_setup()
+    hardhat_build()
 
 def offchain_scanner():
     try:
@@ -167,7 +185,7 @@ def geth_attach():
 # -----------------------------------------------------------------------------
 
 MENU_ACTIONS = {
-    "1": ("Run Hardhat build (run once)", hardhat_build),
+    "1": ("Run Hardhat setup (run once)", hardhat_setup_and_build),
     "2": ("Run Offchain Scanner (run once)", offchain_scanner),
     "3": ("Setup Python venv (run once)", venv_setup),
     "4": ("Initialize Geth chain (run once)", initialize_chain),
